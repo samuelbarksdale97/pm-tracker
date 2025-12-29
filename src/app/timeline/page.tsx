@@ -89,7 +89,7 @@ const statusConfig: Record<Milestone['status'], { icon: typeof Circle; color: st
 };
 
 // Version for cache busting when defaults change
-const DATA_VERSION = 5;
+const DATA_VERSION = 6;
 
 // Question categories config
 const categoryConfig: Record<OpenQuestion['category'], { label: string; color: string; bg: string }> = {
@@ -230,14 +230,255 @@ const defaultQuestions: OpenQuestion[] = [
 // Default milestones for Park at 14th
 // Timeline: Dec 29, 2025 -> Mar 15, 2026
 const defaultMilestones: Milestone[] = [
-  { id: '1', name: 'Design Sign-off', date: '2025-12-29', status: 'in_progress', owner: 'Stakeholders', notes: 'Get final approval on Lovable prototype' },
-  { id: '2', name: 'Apple Dev Account', date: '2026-01-02', status: 'not_started', owner: 'Marc', notes: '$99 purchase needed for iOS App Store' },
-  { id: '3', name: 'Technical De-Risk', date: '2026-01-10', status: 'not_started', owner: 'NexArk', notes: 'Payments, age verification, wallet integration confirmed' },
-  { id: '4', name: 'Auth Complete', date: '2026-01-17', status: 'not_started', owner: 'RDG', notes: 'Users can sign up, log in, create profiles' },
-  { id: '5', name: 'Core Features', date: '2026-01-31', status: 'not_started', owner: 'RDG + NexArk', notes: 'Events, RSVP, reservations, payments functional' },
-  { id: '6', name: 'Feature Complete', date: '2026-02-15', status: 'not_started', owner: 'RDG + NexArk', notes: 'All features built, ready for testing' },
-  { id: '7', name: 'UAT Complete', date: '2026-03-07', status: 'not_started', owner: 'Stakeholders', notes: 'User acceptance testing with real members' },
-  { id: '8', name: 'Launch', date: '2026-03-15', status: 'not_started', owner: 'All', notes: 'Public release on App Store and Google Play' },
+  {
+    id: '1',
+    name: 'Design Sign-off',
+    date: '2025-12-29',
+    status: 'in_progress',
+    owner: 'Stakeholders',
+    notes: `GOAL: Get stakeholder approval on Lovable prototype and answer open questions.
+
+DELIVERABLES:
+• Live demo walkthrough of all key flows
+• Design sign-off from Marc and stakeholders
+• Answers to blocking product questions (membership tiers, guest policy, table selection)
+• Decision on OpenTable integration approach
+
+BLOCKERS TO RESOLVE:
+• Membership tier names, prices, and perks
+• Guest access policy (app access, invite method, limits)
+• OpenTable workaround decision
+• Amenities list for membership screen`
+  },
+  {
+    id: '2',
+    name: 'Apple Dev Account',
+    date: '2026-01-02',
+    status: 'not_started',
+    owner: 'Marc',
+    notes: `GOAL: Purchase Apple Developer Program membership to enable iOS development.
+
+ACTIONS REQUIRED:
+• Marc purchases Apple Developer account ($99/year)
+• Enroll with company credentials (Park at 14th LLC or similar)
+• Accept Apple Developer Program License Agreement
+• Set up App Store Connect access
+
+WHY IT MATTERS:
+• Required for iOS app distribution
+• Needed to create APNs push notification certificates
+• Required for Apple Wallet pass signing certificates
+• Blocks TestFlight beta testing until complete`
+  },
+  {
+    id: '3',
+    name: 'Technical De-Risk',
+    date: '2026-01-10',
+    status: 'not_started',
+    owner: 'NexArk',
+    notes: `GOAL: Confirm all third-party integrations work before building features on top of them.
+
+STRIPE PAYMENTS:
+• Create Stripe account in test mode
+• Configure subscription billing for membership tiers
+• Set up webhook endpoints for payment events
+• Test payment flow end-to-end
+
+APPLE/GOOGLE WALLET:
+• Decide: third-party service (PassKit) vs direct integration
+• Set up pass signing certificates (requires Apple Dev Account)
+• Create sample membership pass
+• Test "Add to Wallet" flow
+
+AGE VERIFICATION:
+• Confirm approach (physical at door vs digital)
+• If digital: evaluate Stripe Identity or alternatives
+• Set up verification flow in test mode
+
+PUSH NOTIFICATIONS:
+• Create Firebase project
+• Configure FCM for Android
+• Set up APNs for iOS (requires Apple Dev Account)
+• Test notification delivery`
+  },
+  {
+    id: '4',
+    name: 'Auth Complete',
+    date: '2026-01-17',
+    status: 'not_started',
+    owner: 'RDG',
+    notes: `GOAL: Users can create accounts, sign in, and manage their profiles.
+
+MOBILE (RDG):
+• Email/password sign up and sign in screens
+• Apple Sign-In integration
+• Google Sign-In integration
+• Password reset flow
+• Profile creation (name, phone, birthday, photo)
+• Profile edit screen
+• Session persistence and token refresh
+
+BACKEND (NexArk):
+• Supabase Auth configuration
+• OAuth provider setup (Apple, Google)
+• Profile table and RLS policies
+• Email templates (welcome, password reset)
+• Auth triggers (create profile on signup)
+
+ACCEPTANCE CRITERIA:
+• New user can sign up with email or social auth
+• Existing user can sign in and see their profile
+• User can reset forgotten password
+• Profile persists across app restarts`
+  },
+  {
+    id: '5',
+    name: 'Core Features',
+    date: '2026-01-31',
+    status: 'not_started',
+    owner: 'RDG + NexArk',
+    notes: `GOAL: All primary user flows functional (even if not polished).
+
+EVENTS & RSVP:
+• Event listing screen with upcoming events
+• Event detail view with ticket types
+• RSVP flow for free events (instant confirmation)
+• RSVP flow for paid events (Stripe checkout)
+• My RSVPs list with QR codes
+• Cancel RSVP functionality
+
+TABLE RESERVATIONS:
+• Availability calendar view
+• Table type selection (based on OpenTable decision)
+• Reservation hold + payment flow
+• My Reservations list with QR codes
+• Cancel reservation with refund handling
+
+MEMBERSHIP:
+• Membership tier comparison screen
+• Purchase membership (Stripe subscription)
+• Membership status in profile
+• Add to Apple/Google Wallet button
+• Cancel/manage subscription
+
+PAYMENTS:
+• Add payment method (Stripe Elements)
+• Saved cards list
+• Default payment method selection
+• Payment history
+
+QR CODES:
+• Generate QR for RSVP check-in
+• Generate QR for reservation check-in
+• Generate QR for membership verification`
+  },
+  {
+    id: '6',
+    name: 'Feature Complete',
+    date: '2026-02-15',
+    status: 'not_started',
+    owner: 'RDG + NexArk',
+    notes: `GOAL: All features built, polished, and ready for user testing.
+
+REMAINING FEATURES:
+• Push notifications (event reminders, reservation confirmations)
+• Guest invite flow (if applicable based on policy decision)
+• Home screen with personalized content
+• Event history / past attendance
+• Payment receipts and history
+• Settings and preferences
+• Help / FAQ / Contact support
+
+POLISH & QUALITY:
+• Loading states and skeleton screens
+• Error handling and retry logic
+• Offline mode handling
+• Animation and transitions
+• Accessibility review (VoiceOver, TalkBack)
+• Dark mode support (if required)
+
+BACKEND COMPLETION:
+• Admin dashboard MVP (events, reservations, members)
+• Webhook reliability (idempotency, retries)
+• Monitoring and logging
+• Rate limiting and abuse prevention
+
+TESTING:
+• Unit tests for critical business logic
+• Integration tests for API endpoints
+• End-to-end test suite for key flows
+• Performance testing (load times, API response times)`
+  },
+  {
+    id: '7',
+    name: 'UAT Complete',
+    date: '2026-03-07',
+    status: 'not_started',
+    owner: 'Stakeholders',
+    notes: `GOAL: Real members test the app and provide feedback before public launch.
+
+BETA TESTING (Feb 15 - Mar 1):
+• Deploy to TestFlight (iOS) and Internal Testing (Android)
+• Recruit 10-20 beta testers (staff, VIP members)
+• Provide feedback mechanism (in-app form, Slack channel)
+• Monitor crash reports and analytics
+• Daily bug triage and fixes
+
+FEEDBACK INCORPORATION (Mar 1 - Mar 7):
+• Prioritize and fix critical bugs
+• Address major UX feedback
+• Performance optimization
+• Final design polish
+
+APP STORE PREPARATION:
+• App Store screenshots (all device sizes)
+• App Store description and keywords
+• Privacy policy URL
+• Terms of service URL
+• Demo account for Apple reviewer
+• Age rating questionnaire
+• In-app purchase configuration
+
+SUBMISSION (Target: Mar 1, Buffer until Mar 7):
+• Submit to Apple App Store (review: 1-7 days)
+• Submit to Google Play Store (review: 3-7 days)
+• Address any rejection feedback
+• Expedited review request if needed`
+  },
+  {
+    id: '8',
+    name: 'Launch',
+    date: '2026-03-15',
+    status: 'not_started',
+    owner: 'All',
+    notes: `GOAL: Public release on App Store and Google Play.
+
+PRE-LAUNCH (Mar 10-14):
+• Apps approved and ready in stores
+• Production environment verified
+• Monitoring dashboards set up
+• Support team briefed
+• Launch communications prepared
+
+LAUNCH DAY (Mar 15):
+• Release apps to public
+• Announce via email, social media, in-venue signage
+• Monitor for issues (crashes, payment failures, bugs)
+• On-call team ready for immediate fixes
+
+POST-LAUNCH (Mar 15-22):
+• Daily monitoring of reviews and ratings
+• Rapid response to critical issues
+• Collect user feedback
+• Plan v1.1 improvements
+
+SUCCESS METRICS:
+• App Store rating ≥ 4.0 stars
+• <1% crash rate
+• <5% payment failure rate
+• X signups in first week (TBD)
+• X memberships purchased (TBD)`
+  },
 ];
 
 // LocalStorage keys
