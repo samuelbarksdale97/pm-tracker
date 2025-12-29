@@ -73,17 +73,17 @@ function TagInput({
 
     return (
         <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 min-h-[32px]">
                 {tags.map((tag, i) => (
                     <Badge
                         key={i}
                         variant="secondary"
-                        className="bg-gray-700 text-gray-200 gap-1"
+                        className="bg-gray-700/80 text-gray-200 gap-1 px-3 py-1 text-sm break-words whitespace-normal max-w-full"
                     >
                         {tag}
                         <button
                             onClick={() => removeTag(tag)}
-                            className="hover:text-red-400 transition-colors"
+                            className="hover:text-red-400 transition-colors ml-1"
                         >
                             <X className="w-3 h-3" />
                         </button>
@@ -95,7 +95,7 @@ function TagInput({
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
-                className="bg-gray-800 border-gray-700"
+                className="bg-gray-800/50 border-gray-700 text-sm"
             />
         </div>
     );
@@ -225,9 +225,9 @@ export function ProjectContextEditor({
                     Project Context
                 </Button>
             </SheetTrigger>
-            <SheetContent className="bg-gray-900 border-gray-700 w-[700px] sm:max-w-[700px] overflow-y-auto">
-                <SheetHeader className="mb-6">
-                    <SheetTitle className="text-white flex items-center gap-2">
+            <SheetContent className="bg-gray-950 border-gray-800 !w-[650px] !max-w-[650px] overflow-y-auto overflow-x-hidden p-0">
+                <SheetHeader className="px-6 pt-6 pb-4 border-b border-gray-800/50">
+                    <SheetTitle className="text-white flex items-center gap-2 text-lg">
                         <FileText className="w-5 h-5 text-blue-400" />
                         Project Context
                     </SheetTitle>
@@ -241,38 +241,37 @@ export function ProjectContextEditor({
                         <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
                     </div>
                 ) : (
-                    <Tabs defaultValue="brief" className="space-y-6">
-                        <TabsList className="bg-gray-800 border-gray-700">
-                            <TabsTrigger value="brief" className="data-[state=active]:bg-gray-700">
-                                Project Brief
-                            </TabsTrigger>
-                            <TabsTrigger value="document" className="data-[state=active]:bg-gray-700">
-                                Full Document
-                            </TabsTrigger>
-                        </TabsList>
+                    <Tabs defaultValue="brief" className="flex-1">
+                        <div className="px-6 pt-4">
+                            <TabsList className="bg-gray-800/50 border border-gray-700/50 p-1">
+                                <TabsTrigger value="brief" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400">
+                                    Project Brief
+                                </TabsTrigger>
+                                <TabsTrigger value="document" className="data-[state=active]:bg-gray-700 data-[state=active]:text-white text-gray-400">
+                                    Full Document
+                                </TabsTrigger>
+                            </TabsList>
+                        </div>
 
                         {/* Project Brief Tab */}
-                        <TabsContent value="brief" className="space-y-6">
+                        <TabsContent value="brief" className="px-6 py-4 space-y-4">
                             {/* Vision */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <Lightbulb className="w-4 h-4 text-yellow-400" />
                                     Vision Statement
                                 </label>
                                 <Textarea
                                     value={vision}
                                     onChange={(e) => setVision(e.target.value)}
-                                    placeholder="One or two sentences describing what this project achieves..."
-                                    className="bg-gray-800 border-gray-700 min-h-[80px]"
+                                    placeholder='e.g., "A mobile membership app that revolutionizes how nightclubs manage VIP relationships"'
+                                    className="bg-gray-800/50 border-gray-700 min-h-[80px] text-sm"
                                 />
-                                <p className="text-xs text-gray-500">
-                                    e.g., "A mobile membership app that revolutionizes how nightclubs manage VIP relationships"
-                                </p>
                             </div>
 
                             {/* Target Users */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <Users className="w-4 h-4 text-blue-400" />
                                     Target Users
                                 </label>
@@ -284,8 +283,8 @@ export function ProjectContextEditor({
                             </div>
 
                             {/* Key Features */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <Target className="w-4 h-4 text-green-400" />
                                     Key Features
                                 </label>
@@ -297,8 +296,8 @@ export function ProjectContextEditor({
                             </div>
 
                             {/* Tech Stack */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <Code className="w-4 h-4 text-purple-400" />
                                     Tech Stack
                                 </label>
@@ -309,7 +308,7 @@ export function ProjectContextEditor({
                                             value={techFrontend}
                                             onChange={(e) => setTechFrontend(e.target.value)}
                                             placeholder="e.g., React, Next.js"
-                                            className="bg-gray-800 border-gray-700"
+                                            className="bg-gray-800/50 border-gray-700 text-sm"
                                         />
                                     </div>
                                     <div className="space-y-1">
@@ -318,7 +317,7 @@ export function ProjectContextEditor({
                                             value={techBackend}
                                             onChange={(e) => setTechBackend(e.target.value)}
                                             placeholder="e.g., Supabase, PostgreSQL"
-                                            className="bg-gray-800 border-gray-700"
+                                            className="bg-gray-800/50 border-gray-700 text-sm"
                                         />
                                     </div>
                                     <div className="space-y-1">
@@ -327,7 +326,7 @@ export function ProjectContextEditor({
                                             value={techMobile}
                                             onChange={(e) => setTechMobile(e.target.value)}
                                             placeholder="e.g., React Native, Expo"
-                                            className="bg-gray-800 border-gray-700"
+                                            className="bg-gray-800/50 border-gray-700 text-sm"
                                         />
                                     </div>
                                     <div className="space-y-1">
@@ -336,7 +335,7 @@ export function ProjectContextEditor({
                                             value={techAdmin}
                                             onChange={(e) => setTechAdmin(e.target.value)}
                                             placeholder="e.g., Next.js, shadcn/ui"
-                                            className="bg-gray-800 border-gray-700"
+                                            className="bg-gray-800/50 border-gray-700 text-sm"
                                         />
                                     </div>
                                     <div className="space-y-1 col-span-2">
@@ -345,15 +344,15 @@ export function ProjectContextEditor({
                                             value={techInfra}
                                             onChange={(e) => setTechInfra(e.target.value)}
                                             placeholder="e.g., Vercel, Supabase Edge Functions"
-                                            className="bg-gray-800 border-gray-700"
+                                            className="bg-gray-800/50 border-gray-700 text-sm"
                                         />
                                     </div>
                                 </div>
                             </div>
 
                             {/* Business Goals */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <Target className="w-4 h-4 text-orange-400" />
                                     Business Goals
                                 </label>
@@ -365,8 +364,8 @@ export function ProjectContextEditor({
                             </div>
 
                             {/* Constraints */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 flex items-center gap-2 mb-3">
                                     <AlertTriangle className="w-4 h-4 text-red-400" />
                                     Constraints & Requirements
                                 </label>
@@ -379,58 +378,42 @@ export function ProjectContextEditor({
                         </TabsContent>
 
                         {/* Full Document Tab */}
-                        <TabsContent value="document" className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-300">
+                        <TabsContent value="document" className="px-6 py-4">
+                            <div className="bg-gray-900/50 rounded-lg p-4 border border-gray-800/50">
+                                <label className="text-sm font-medium text-gray-300 mb-2 block">
                                     Project Documentation (Markdown)
                                 </label>
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-500 mb-3">
                                     Paste your PRD, technical spec, or other project documentation here.
-                                    This will be injected into AI prompts for comprehensive context.
                                 </p>
                                 <Textarea
                                     value={contextDocument}
                                     onChange={(e) => setContextDocument(e.target.value)}
-                                    placeholder={`# Project Overview
-
-## Background
-Describe the project background and motivation...
-
-## Goals
-- Goal 1
-- Goal 2
-
-## User Personas
-### Member
-...
-
-## Technical Architecture
-...
-
-## API Contracts
-...`}
-                                    className="bg-gray-800 border-gray-700 min-h-[400px] font-mono text-sm"
+                                    placeholder={`# Project Overview\n\n## Background\nDescribe the project background...\n\n## Goals\n- Goal 1\n- Goal 2`}
+                                    className="bg-gray-800/50 border-gray-700 min-h-[350px] font-mono text-sm"
                                 />
                             </div>
                         </TabsContent>
 
                         {/* Status Messages */}
-                        {error && (
-                            <div className="flex items-center gap-2 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm">
-                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                {error}
-                            </div>
-                        )}
+                        <div className="px-6 pb-2">
+                            {error && (
+                                <div className="flex items-center gap-2 p-3 bg-red-900/30 border border-red-800/50 rounded-lg text-red-300 text-sm">
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                    {error}
+                                </div>
+                            )}
 
-                        {success && (
-                            <div className="flex items-center gap-2 p-3 bg-green-900/50 border border-green-700 rounded-lg text-green-300 text-sm">
-                                <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                                Project context saved successfully!
-                            </div>
-                        )}
+                            {success && (
+                                <div className="flex items-center gap-2 p-3 bg-green-900/30 border border-green-800/50 rounded-lg text-green-300 text-sm">
+                                    <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                                    Project context saved successfully!
+                                </div>
+                            )}
+                        </div>
 
                         {/* Save Button */}
-                        <div className="pt-4 border-t border-gray-800">
+                        <div className="px-6 py-4 border-t border-gray-800/50 bg-gray-900/30">
                             <Button
                                 onClick={handleSave}
                                 disabled={saving}

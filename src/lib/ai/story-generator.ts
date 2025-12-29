@@ -3,7 +3,7 @@
 // Uses hierarchical context: Project → Epic → Feature
 
 import Anthropic from '@anthropic-ai/sdk';
-import { HierarchicalContext, Feature, Epic, Project } from '../supabase';
+import { HierarchicalContext, Feature, Epic, Project, CustomPersona, DEFAULT_PERSONAS } from '../supabase';
 
 const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -46,6 +46,8 @@ export interface FeatureContext {
     existingStories?: StoryForContext[];
     // Stories in the epic but not assigned to any feature (potential candidates)
     unassignedEpicStories?: StoryForContext[];
+    // Custom personas from project brief (if available)
+    customPersonas?: CustomPersona[];
 }
 
 export interface StorySuggestion {
@@ -56,6 +58,81 @@ export interface StorySuggestion {
     reason: string;
 }
 
+/**
+ * Build the persona section of the prompt based on custom or default personas
+ */
+function buildPersonaSection(personas: CustomPersona[]): { section: string; ids: string } {
+    const personaLines = personas.map(p => `- ${p.id}: ${p.description}`);
+    const personaIds = personas.map(p => p.id).join('|');
+    return {
+        section: `PERSONA TYPES:\n${personaLines.join('\n')}`,
+        ids: personaIds,
+    };
+}
+
+/**
+ * Generate the story generation prompt with dynamic personas
+ */
+function buildStoryGenerationPrompt(personas: CustomPersona[]): string {
+    const personaInfo = buildPersonaSection(personas);
+
+    return `You are an expert product manager specializing in user story creation for software projects.
+
+Your task is to generate well-formed user stories for a specific Feature within a larger Epic. Each story should:
+1. Follow the format: "As a [persona], I want [action] so that [benefit]"
+2. Be specific, testable, and implementable
+3. Include clear acceptance criteria
+4. Align with the Feature's purpose and the Epic's goals
+
+${personaInfo.section}
+
+PRIORITY LEVELS:
+- P0: Critical - Must have for MVP/launch
+- P1: High - Important but can be in fast-follow
+- P2: Normal - Nice to have, can be deferred
+
+OUTPUT FORMAT:
+Return a valid JSON object with this structure:
+{
+    "stories": [
+        {
+            "narrative": "As a [persona], I want [action] so that [benefit]",
+            "persona": "${personaInfo.ids}",
+            "priority": "P0|P1|P2",
+            "acceptance_criteria": [
+                "Criterion 1",
+                "Criterion 2",
+                "Criterion 3"
+            ],
+            "rationale": "Why this story is important for the Feature"
+        }
+    ],
+    "feature_context": "Summary of how these stories fulfill the feature requirements",
+    "generation_notes": ["Any assumptions or notes about the generation"],
+    "existing_coverage": {
+        "count": 0,
+        "covered_areas": ["Area 1 covered by existing stories"]
+    },
+    "gaps_filled": ["Gap 1 that new stories address"]
+}
+
+GUIDELINES:
+- Generate 3-7 stories depending on Feature complexity
+- Start with P0 stories (core functionality), then P1 (enhancements), then P2 (polish)
+- Each story should be completable in 1-3 sprints
+- Avoid overly broad stories - break them down
+- Consider edge cases and error handling scenarios
+- Include at least one story per primary persona type relevant to the Feature
+
+IMPORTANT - DIFF-BASED GENERATION:
+If existing stories are provided, DO NOT generate duplicates. Instead:
+1. Analyze what the existing stories cover
+2. Identify gaps - what functionality is missing
+3. Generate ONLY stories that fill those gaps
+4. Report what's covered and what gaps you're filling`;
+}
+
+// Legacy static prompt (used when no custom personas)
 const STORY_GENERATION_PROMPT = `You are an expert product manager specializing in user story creation for software projects.
 
 Your task is to generate well-formed user stories for a specific Feature within a larger Epic. Each story should:
@@ -219,13 +296,21 @@ ${additionalInstructions ? `## Additional Instructions\n${additionalInstructions
 
 Generate comprehensive user stories that would fully implement this Feature. Return valid JSON.`;
 
+    // Use custom personas if provided, otherwise use defaults
+    const personas = context.customPersonas && context.customPersonas.length > 0
+        ? context.customPersonas
+        : DEFAULT_PERSONAS;
+
+    // Build the system prompt with dynamic personas
+    const basePrompt = buildStoryGenerationPrompt(personas);
     const systemPrompt = hasExistingStories
-        ? STORY_GENERATION_PROMPT + '\n\n' + DIFF_GENERATION_PROMPT
-        : STORY_GENERATION_PROMPT;
+        ? basePrompt + '\n\n' + DIFF_GENERATION_PROMPT
+        : basePrompt;
 
     try {
         console.log('[Story Generation] Starting generation for feature:', context.feature.name,
-            hasExistingStories ? `(diff mode: ${context.existingStories!.length} existing)` : '(full mode)');
+            hasExistingStories ? `(diff mode: ${context.existingStories!.length} existing)` : '(full mode)',
+            `using ${personas.length} personas`);
 
         const response = await anthropic.messages.create({
             model: 'claude-sonnet-4-20250514',

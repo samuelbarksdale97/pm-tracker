@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Zap, Columns3, List, BarChart3 } from 'lucide-react';
+import { Zap, Columns3, List } from 'lucide-react';
 import { ViewModeSwitcher } from '@/components/ui/view-mode-switcher';
 import { KanbanBoard } from '@/components/kanban-board';
 import { StoryTable } from '@/components/story-table';
-import { TimelineView } from '@/components/timeline-view';
 import { StatsGrid } from '@/components/stats-grid';
 import {
     Select,
@@ -16,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { Story, Workstream, TeamMember, UserStory } from '@/lib/supabase';
 
-type ExecuteView = 'kanban' | 'table' | 'timeline';
+type ExecuteView = 'kanban' | 'table';
 
 interface ExecuteTabProps {
     stories: Story[];
@@ -31,7 +30,6 @@ interface ExecuteTabProps {
 const viewOptions = [
     { key: 'kanban' as const, label: 'Kanban', icon: Columns3 },
     { key: 'table' as const, label: 'Table', icon: List },
-    { key: 'timeline' as const, label: 'Timeline', icon: BarChart3 },
 ];
 
 export function ExecuteTab({
@@ -124,14 +122,6 @@ export function ExecuteTab({
                     teamMembers={teamMembers}
                     onStatusChange={onStatusChange}
                     onOwnerChange={onOwnerChange}
-                    onStoryClick={onStoryClick}
-                />
-            )}
-
-            {view === 'timeline' && (
-                <TimelineView
-                    stories={filteredStories}
-                    workstreams={workstreams}
                     onStoryClick={onStoryClick}
                 />
             )}

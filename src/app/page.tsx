@@ -10,6 +10,7 @@ import {
   getStories,
   getUserStories,
   getTeamMembers,
+  getFeaturesForMilestoneBoard,
   updateStoryStatus,
   updateStoryOwner,
   Story,
@@ -17,7 +18,8 @@ import {
   Workstream,
   Milestone,
   TeamMember,
-  Project
+  Project,
+  Feature
 } from '@/lib/supabase';
 import { StoryDetailDrawer } from '@/components/story-detail-drawer';
 import { UserStoryDetailDrawer } from '@/components/user-story-detail-drawer';
@@ -32,6 +34,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PlanTab, ScheduleTab, ExecuteTab, MonitorTab } from '@/components/tabs';
+import { GlobalSearch } from '@/components/global-search';
+import { NotificationsDropdown } from '@/components/notifications-dropdown';
 import { cn } from '@/lib/utils';
 import { useUrlState } from '@/hooks/use-url-state';
 
@@ -68,6 +72,7 @@ function HomeContent() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [stories, setStories] = useState<Story[]>([]);
   const [userStories, setUserStories] = useState<UserStory[]>([]);
+  const [features, setFeatures] = useState<Feature[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,11 +96,12 @@ function HomeContent() {
       const proj = await getProject();
       setProject(proj);
 
-      const [ws, ms, t, us, tm] = await Promise.all([
+      const [ws, ms, t, us, feats, tm] = await Promise.all([
         getWorkstreams(proj.id),
         getMilestones(proj.id),
         getStories(proj.id),
         getUserStories(proj.id),
+        getFeaturesForMilestoneBoard(proj.id),
         getTeamMembers()
       ]);
 
@@ -103,6 +109,7 @@ function HomeContent() {
       setMilestones(ms);
       setStories(t);
       setUserStories(us);
+      setFeatures(feats);
       setTeamMembers(tm);
       setError(null);
     } catch (err) {
@@ -184,6 +191,55 @@ function HomeContent() {
     setDrawerOpen(true);
   };
 
+  // Handler for global search result selection
+  const handleSearchResultSelect = useCallback((result: {
+    id: string;
+    type: 'epic' | 'feature' | 'story';
+    epicId?: string;
+    featureId?: string;
+  }) => {
+    // Navigate to Plan tab and set URL params to show the selected item
+    setStage('plan');
+
+    // Build URL params based on result type
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', 'plan');
+
+    if (result.type === 'epic') {
+      params.set('epic', result.id);
+      params.delete('feature');
+      params.delete('story');
+    } else if (result.type === 'feature') {
+      if (result.epicId) params.set('epic', result.epicId);
+      params.set('feature', result.id);
+      params.delete('story');
+    } else if (result.type === 'story') {
+      if (result.epicId) params.set('epic', result.epicId);
+      if (result.featureId) params.set('feature', result.featureId);
+      params.set('story', result.id);
+    }
+
+    // Update URL to trigger navigation
+    window.history.pushState({}, '', `?${params.toString()}`);
+    // Force a reload to pick up the new URL state
+    loadData();
+  }, [setStage, loadData]);
+
+  // Primary stats from User Stories (planning artifacts)
+  const userStoryStats = useMemo(() => {
+    return {
+      total: userStories.length,
+      notStarted: userStories.filter(s => s.status === 'Not Started').length,
+      inProgress: userStories.filter(s => s.status === 'In Progress').length,
+      done: userStories.filter(s => s.status === 'Done').length,
+      blocked: userStories.filter(s => s.status === 'Blocked').length,
+      p0: userStories.filter(s => s.priority === 'P0').length,
+      p1: userStories.filter(s => s.priority === 'P1').length,
+      p2: userStories.filter(s => s.priority === 'P2').length,
+    };
+  }, [userStories]);
+
+  // Legacy stats from Stories/Tasks (execution artifacts)
   const stats = useMemo(() => {
     return {
       total: stories.length,
@@ -236,10 +292,15 @@ function HomeContent() {
               <p className="text-gray-500 text-sm mt-1">{project?.description}</p>
             </div>
             <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-xs text-gray-400">Live from Supabase</span>
-              </div>
+              {/* Global Search */}
+              {project && (
+                <GlobalSearch
+                  projectId={project.id}
+                  onSelectResult={handleSearchResultSelect}
+                />
+              )}
+              {/* Notifications */}
+              <NotificationsDropdown />
               {project && (
                 <ProjectContextEditor
                   projectId={project.id}
@@ -247,9 +308,9 @@ function HomeContent() {
                 />
               )}
               <div className="text-right">
-                <div className="text-sm text-gray-400">Progress</div>
+                <div className="text-sm text-gray-400">User Stories</div>
                 <div className="text-lg font-semibold text-green-400">
-                  {stats.done}/{stats.total} ({Math.round((stats.done / stats.total) * 100) || 0}%)
+                  {userStoryStats.done}/{userStoryStats.total} ({userStoryStats.total > 0 ? Math.round((userStoryStats.done / userStoryStats.total) * 100) : 0}%)
                 </div>
               </div>
             </div>
@@ -322,11 +383,7 @@ function HomeContent() {
         {stage === 'plan' && project && (
           <PlanTab
             projectId={project.id}
-            userStories={userStories}
             teamMembers={teamMembers}
-            onUserStoryClick={handleUserStoryClick}
-            onTaskClick={handleStoryClick}
-            onNewUserStoryCreated={handleNewUserStoryCreated}
             onRefresh={loadData}
           />
         )}
@@ -336,9 +393,9 @@ function HomeContent() {
             projectId={project.id}
             milestones={milestones}
             userStories={userStories}
+            features={features}
             onRefresh={loadData}
             onUserStoryCreated={handleNewUserStoryCreated}
-            onUserStoryClick={handleUserStoryClick}
           />
         )}
 
@@ -357,9 +414,12 @@ function HomeContent() {
         {stage === 'monitor' && project && (
           <MonitorTab
             projectId={project.id}
+            projectName={project.name}
             stories={stories}
+            userStories={userStories}
             workstreams={workstreams}
             onStoryClick={handleStoryClick}
+            onRefresh={loadData}
           />
         )}
       </main>

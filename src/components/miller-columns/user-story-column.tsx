@@ -35,8 +35,25 @@ import {
     Layers,
     Check,
     X,
+    CheckSquare,
+    Square,
+    Trash2,
+    CheckCircle2,
+    XCircle,
 } from 'lucide-react';
-import { Epic, Feature, UserStory, TeamMember, createUserStory, getFeatures, createFeature, updateUserStory } from '@/lib/supabase';
+import {
+    Epic,
+    Feature,
+    UserStory,
+    TeamMember,
+    createUserStory,
+    getFeatures,
+    createFeature,
+    updateUserStory,
+    bulkUpdateUserStories,
+    bulkDeleteUserStories,
+} from '@/lib/supabase';
+import { recordGeneration } from '@/lib/ai-metrics';
 
 // Allowed team members for this project
 const ALLOWED_TEAM_MEMBERS = ['Sam', 'Terell', 'Clyde'];
@@ -134,6 +151,12 @@ export function UserStoryColumn({
     // Filter team members to only show allowed ones
     const filteredTeamMembers = teamMembers.filter(m => ALLOWED_TEAM_MEMBERS.includes(m.name));
 
+    // Bulk selection state
+    const [bulkMode, setBulkMode] = useState(false);
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+    const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+
     // AI Generation state
     const [showAIGeneration, setShowAIGeneration] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -144,6 +167,79 @@ export function UserStoryColumn({
     const [isSaving, setIsSaving] = useState(false);
     const [consolidationResult, setConsolidationResult] = useState<ConsolidationResult | null>(null);
     const [skippedIndices, setSkippedIndices] = useState<Set<number>>(new Set());
+
+    // Clear bulk selection when feature changes
+    useEffect(() => {
+        setBulkSelectedIds(new Set());
+        setBulkMode(false);
+    }, [selectedFeature?.id]);
+
+    // Bulk action handlers
+    const handleToggleBulkSelect = (storyId: string) => {
+        setBulkSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(storyId)) {
+                next.delete(storyId);
+            } else {
+                next.add(storyId);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllBulk = () => {
+        setBulkSelectedIds(new Set(userStories.map(s => s.id)));
+    };
+
+    const handleDeselectAllBulk = () => {
+        setBulkSelectedIds(new Set());
+    };
+
+    const handleBulkStatusChange = async (status: UserStory['status']) => {
+        if (bulkSelectedIds.size === 0) return;
+        setIsBulkUpdating(true);
+        try {
+            await bulkUpdateUserStories(Array.from(bulkSelectedIds), { status });
+            setBulkSelectedIds(new Set());
+            setBulkMode(false);
+            onStoryUpdated?.();
+        } catch (err) {
+            console.error('Error bulk updating status:', err);
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    };
+
+    const handleBulkPriorityChange = async (priority: UserStory['priority']) => {
+        if (bulkSelectedIds.size === 0) return;
+        setIsBulkUpdating(true);
+        try {
+            await bulkUpdateUserStories(Array.from(bulkSelectedIds), { priority });
+            setBulkSelectedIds(new Set());
+            setBulkMode(false);
+            onStoryUpdated?.();
+        } catch (err) {
+            console.error('Error bulk updating priority:', err);
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (bulkSelectedIds.size === 0) return;
+        setIsBulkUpdating(true);
+        try {
+            await bulkDeleteUserStories(Array.from(bulkSelectedIds));
+            setBulkSelectedIds(new Set());
+            setBulkMode(false);
+            setShowBulkDeleteConfirm(false);
+            onStoryUpdated?.();
+        } catch (err) {
+            console.error('Error bulk deleting:', err);
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    };
 
     const handleAIGenerate = async () => {
         if (!selectedFeature) return;
@@ -282,6 +378,12 @@ export function UserStoryColumn({
                 });
             }
 
+            // Record AI generation metrics
+            recordGeneration({
+                storiesGenerated: generatedStories.length,
+                storiesAccepted: storiesToSave.length,
+            });
+
             setShowAIGeneration(false);
             setGeneratedStories([]);
             setSelectedStories(new Set());
@@ -333,7 +435,29 @@ export function UserStoryColumn({
                         <span className="text-xs text-gray-500 mr-2">
                             {userStories.length}
                         </span>
-                        {(selectedEpic || selectedFeature) && (
+                        {/* Bulk Mode Toggle */}
+                        {userStories.length > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setBulkMode(!bulkMode);
+                                    if (bulkMode) {
+                                        setBulkSelectedIds(new Set());
+                                    }
+                                }}
+                                className={cn(
+                                    "h-7 px-2",
+                                    bulkMode
+                                        ? "text-blue-400 bg-blue-500/20"
+                                        : "text-gray-400 hover:text-white"
+                                )}
+                                title="Bulk select mode"
+                            >
+                                <CheckSquare className="w-4 h-4" />
+                            </Button>
+                        )}
+                        {(selectedEpic || selectedFeature) && !bulkMode && (
                             <CreateStoryDialog
                                 projectId={projectId}
                                 epicId={selectedEpic?.id || null}
@@ -344,6 +468,123 @@ export function UserStoryColumn({
                     </div>
                 </div>
             </div>
+
+            {/* Bulk Action Toolbar */}
+            {bulkMode && (
+                <div className="px-3 py-2 bg-blue-950/30 border-b border-blue-800/50">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-blue-300 font-medium">
+                                {bulkSelectedIds.size} selected
+                            </span>
+                            {bulkSelectedIds.size < userStories.length ? (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleSelectAllBulk}
+                                    className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300"
+                                >
+                                    Select all
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleDeselectAllBulk}
+                                    className="h-6 px-2 text-xs text-blue-400 hover:text-blue-300"
+                                >
+                                    Deselect all
+                                </Button>
+                            )}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                                setBulkMode(false);
+                                setBulkSelectedIds(new Set());
+                            }}
+                            className="h-6 w-6 p-0 text-gray-400 hover:text-white"
+                        >
+                            <XCircle className="w-4 h-4" />
+                        </Button>
+                    </div>
+
+                    {bulkSelectedIds.size > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Status Change */}
+                            <Select
+                                onValueChange={(v) => handleBulkStatusChange(v as UserStory['status'])}
+                                disabled={isBulkUpdating}
+                            >
+                                <SelectTrigger className="h-7 w-32 bg-gray-800 border-gray-700 text-xs">
+                                    <SelectValue placeholder="Set status..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-900 border-gray-700">
+                                    {USER_STORY_STATUSES.map((s) => (
+                                        <SelectItem key={s} value={s} className="text-xs">
+                                            {s}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Priority Change */}
+                            <Select
+                                onValueChange={(v) => handleBulkPriorityChange(v as UserStory['priority'])}
+                                disabled={isBulkUpdating}
+                            >
+                                <SelectTrigger className="h-7 w-24 bg-gray-800 border-gray-700 text-xs">
+                                    <SelectValue placeholder="Priority..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-900 border-gray-700">
+                                    <SelectItem value="P0" className="text-xs">P0</SelectItem>
+                                    <SelectItem value="P1" className="text-xs">P1</SelectItem>
+                                    <SelectItem value="P2" className="text-xs">P2</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {/* Delete */}
+                            {!showBulkDeleteConfirm ? (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowBulkDeleteConfirm(true)}
+                                    disabled={isBulkUpdating}
+                                    className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                    Delete
+                                </Button>
+                            ) : (
+                                <div className="flex items-center gap-1">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleBulkDelete}
+                                        disabled={isBulkUpdating}
+                                        className="h-7 px-2 bg-red-600 hover:bg-red-700 text-white"
+                                    >
+                                        {isBulkUpdating ? (
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                            <>Confirm ({bulkSelectedIds.size})</>
+                                        )}
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setShowBulkDeleteConfirm(false)}
+                                        className="h-7 px-2 text-gray-400"
+                                    >
+                                        Cancel
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* User Stories List */}
             <div className="flex-1 overflow-y-auto">
@@ -387,6 +628,9 @@ export function UserStoryColumn({
                                 story={story}
                                 isSelected={selectedUserStoryId === story.id}
                                 teamMembers={filteredTeamMembers}
+                                bulkMode={bulkMode}
+                                bulkSelected={bulkSelectedIds.has(story.id)}
+                                onBulkToggle={() => handleToggleBulkSelect(story.id)}
                                 onSelect={() => onSelectUserStory(story.id)}
                                 onUpdated={() => onStoryUpdated?.()}
                             />
@@ -657,12 +901,18 @@ function UserStoryCard({
     story,
     isSelected,
     teamMembers,
+    bulkMode = false,
+    bulkSelected = false,
+    onBulkToggle,
     onSelect,
     onUpdated,
 }: {
     story: UserStory;
     isSelected: boolean;
     teamMembers: TeamMember[];
+    bulkMode?: boolean;
+    bulkSelected?: boolean;
+    onBulkToggle?: () => void;
     onSelect: () => void;
     onUpdated: () => void;
 }) {
@@ -703,6 +953,11 @@ function UserStoryCard({
     };
 
     const handleCardClick = (e: React.MouseEvent) => {
+        // In bulk mode, clicking the card toggles selection
+        if (bulkMode) {
+            onBulkToggle?.();
+            return;
+        }
         // Check if the click originated from within the dropdowns panel
         const target = e.target as HTMLElement;
         const isDropdownClick = target.closest('[data-dropdown-panel]');
@@ -716,16 +971,33 @@ function UserStoryCard({
             onClick={handleCardClick}
             className={cn(
                 "px-3 py-2.5 cursor-pointer border-l-2 transition-colors group",
-                isSelected
-                    ? "bg-blue-500/15 border-blue-500"
-                    : "hover:bg-gray-800/50 border-transparent"
+                bulkMode && bulkSelected
+                    ? "bg-blue-500/20 border-blue-500"
+                    : isSelected
+                        ? "bg-blue-500/15 border-blue-500"
+                        : "hover:bg-gray-800/50 border-transparent"
             )}
         >
             {/* Header with persona and priority */}
             <div className="flex items-center justify-between mb-2">
-                <div className={cn("flex items-center gap-1.5", persona.color)}>
-                    {persona.icon}
-                    <span className="text-xs font-medium">{persona.label}</span>
+                <div className="flex items-center gap-2">
+                    {/* Bulk Selection Checkbox */}
+                    {bulkMode && (
+                        <div
+                            className={cn(
+                                "w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                                bulkSelected
+                                    ? "bg-blue-500 border-blue-500"
+                                    : "border-gray-500 hover:border-blue-400"
+                            )}
+                        >
+                            {bulkSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                    )}
+                    <div className={cn("flex items-center gap-1.5", persona.color)}>
+                        {persona.icon}
+                        <span className="text-xs font-medium">{persona.label}</span>
+                    </div>
                 </div>
                 <Badge className={cn("text-[10px] px-1.5 py-0", priorityColors[story.priority])}>
                     {story.priority}

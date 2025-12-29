@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from 'react';
 import {
     UserStory,
     Milestone,
+    Feature,
     createMilestone,
     updateMilestone,
     deleteMilestone,
@@ -11,7 +12,10 @@ import {
     bulkAssignStories,
     lockMilestone,
     duplicateMilestone,
-    resetAllMilestoneAssignments
+    resetAllMilestoneAssignments,
+    updateFeatureMilestone,
+    bulkAssignFeatures,
+    resetAllFeatureMilestoneAssignments
 } from '@/lib/supabase';
 import { MilestoneBoardHeader } from './milestone-board-header';
 import { MilestoneBoardFilters } from './milestone-board-filters';
@@ -19,17 +23,21 @@ import { MilestoneColumn } from './milestone-column';
 import { BacklogColumn } from './backlog-column';
 import { CreateMilestoneDialog } from './create-milestone-dialog';
 import { EmptyState } from './empty-state';
-import { MilestoneBoardProps } from './types';
+import { MilestoneBoardProps, MilestoneBoardMode } from './types';
 
 export function MilestoneBoard({
     projectId,
     milestones,
     userStories,
+    features,
     onRefresh,
     onUserStoryCreated
 }: MilestoneBoardProps) {
     // Dialog state
     const [isCreating, setIsCreating] = useState(false);
+
+    // Mode state (features or stories)
+    const [mode, setMode] = useState<MilestoneBoardMode>('features');
 
     // Editing state
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,14 +49,19 @@ export function MilestoneBoard({
     const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
     // Bulk selection state
-    const [selectedStories, setSelectedStories] = useState<Set<string>>(new Set());
+    const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
     const [bulkMode, setBulkMode] = useState(false);
 
-    // Get unique workstreams from stories
+    // Get unique workstreams from stories or epics from features
     const workstreams = useMemo(() => {
-        const areas = new Set(userStories.map(s => s.feature_area));
-        return Array.from(areas).sort();
-    }, [userStories]);
+        if (mode === 'features') {
+            const epics = new Set(features.map(f => f.epic?.name).filter(Boolean));
+            return Array.from(epics).sort() as string[];
+        } else {
+            const areas = new Set(userStories.map(s => s.feature_area));
+            return Array.from(areas).sort();
+        }
+    }, [mode, features, userStories]);
 
     // Filter stories based on search and filters
     const filteredStories = useMemo(() => {
@@ -61,6 +74,19 @@ export function MilestoneBoard({
             return matchesSearch && matchesWorkstream && matchesPriority;
         });
     }, [userStories, searchQuery, workstreamFilter, priorityFilter]);
+
+    // Filter features based on search and filters
+    const filteredFeatures = useMemo(() => {
+        return features.filter(feature => {
+            const matchesSearch = searchQuery === '' ||
+                feature.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                feature.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (feature.description && feature.description.toLowerCase().includes(searchQuery.toLowerCase()));
+            const matchesWorkstream = workstreamFilter === 'all' || feature.epic?.name === workstreamFilter;
+            const matchesPriority = priorityFilter === 'all' || feature.priority === priorityFilter;
+            return matchesSearch && matchesWorkstream && matchesPriority;
+        });
+    }, [features, searchQuery, workstreamFilter, priorityFilter]);
 
     // Group user stories by milestone
     const storiesByMilestone = useMemo(() => {
@@ -77,7 +103,24 @@ export function MilestoneBoard({
         return grouped;
     }, [milestones, filteredStories]);
 
-    const allStoriesAssigned = storiesByMilestone.backlog.length === 0;
+    // Group features by milestone
+    const featuresByMilestone = useMemo(() => {
+        const grouped: Record<string, Feature[]> = { backlog: [] };
+        milestones.forEach(m => { grouped[m.id] = []; });
+
+        filteredFeatures.forEach(f => {
+            if (f.milestone_id && grouped[f.milestone_id]) {
+                grouped[f.milestone_id].push(f);
+            } else {
+                grouped.backlog.push(f);
+            }
+        });
+        return grouped;
+    }, [milestones, filteredFeatures]);
+
+    const allItemsAssigned = mode === 'features'
+        ? featuresByMilestone.backlog.length === 0
+        : storiesByMilestone.backlog.length === 0;
     const hasActiveFilters = searchQuery !== '' || workstreamFilter !== 'all' || priorityFilter !== 'all';
 
     // Handlers
@@ -119,14 +162,17 @@ export function MilestoneBoard({
 
     const handleDeleteMilestone = useCallback(async (id: string) => {
         const stories = storiesByMilestone[id] || [];
-        if (!confirm(`Delete this milestone? ${stories.length} stories will be moved to Backlog.`)) return;
+        const feats = featuresByMilestone[id] || [];
+        const itemCount = mode === 'features' ? feats.length : stories.length;
+        const itemType = mode === 'features' ? 'features' : 'stories';
+        if (!confirm(`Delete this milestone? ${itemCount} ${itemType} will be moved to Backlog.`)) return;
         try {
             await deleteMilestone(id);
             onRefresh();
         } catch (err) {
             console.error('Error deleting milestone:', err);
         }
-    }, [storiesByMilestone, onRefresh]);
+    }, [storiesByMilestone, featuresByMilestone, mode, onRefresh]);
 
     const handleLockMilestone = useCallback(async (id: string, lock: boolean) => {
         try {
@@ -155,53 +201,76 @@ export function MilestoneBoard({
         }
     }, [onRefresh]);
 
-    const handleBulkAssign = useCallback(async (milestoneId: string | null) => {
-        if (selectedStories.size === 0) return;
+    const handleMoveFeature = useCallback(async (featureId: string, newMilestoneId: string | null) => {
         try {
-            await bulkAssignStories(Array.from(selectedStories), milestoneId);
-            setSelectedStories(new Set());
+            await updateFeatureMilestone(featureId, newMilestoneId);
+            onRefresh();
+        } catch (err) {
+            console.error('Error moving feature:', err);
+        }
+    }, [onRefresh]);
+
+    const handleBulkAssign = useCallback(async (milestoneId: string | null) => {
+        if (selectedItems.size === 0) return;
+        try {
+            if (mode === 'features') {
+                await bulkAssignFeatures(Array.from(selectedItems), milestoneId);
+            } else {
+                await bulkAssignStories(Array.from(selectedItems), milestoneId);
+            }
+            setSelectedItems(new Set());
             setBulkMode(false);
             onRefresh();
         } catch (err) {
             console.error('Error bulk assigning:', err);
         }
-    }, [selectedStories, onRefresh]);
+    }, [selectedItems, mode, onRefresh]);
 
     const handleResetAll = useCallback(async () => {
-        const assignedCount = userStories.filter(s => s.milestone_id).length;
+        const assignedCount = mode === 'features'
+            ? features.filter(f => f.milestone_id).length
+            : userStories.filter(s => s.milestone_id).length;
+        const itemType = mode === 'features' ? 'features' : 'stories';
+
         if (assignedCount === 0) {
-            alert('No stories are assigned to milestones.');
+            alert(`No ${itemType} are assigned to milestones.`);
             return;
         }
-        if (!confirm(`Reset all milestone assignments? This will move ${assignedCount} stories back to the Backlog.`)) return;
+        if (!confirm(`Reset all milestone assignments? This will move ${assignedCount} ${itemType} back to the Backlog.`)) return;
         try {
-            await resetAllMilestoneAssignments(projectId);
+            if (mode === 'features') {
+                await resetAllFeatureMilestoneAssignments(projectId);
+            } else {
+                await resetAllMilestoneAssignments(projectId);
+            }
             onRefresh();
         } catch (err) {
             console.error('Error resetting assignments:', err);
         }
-    }, [projectId, userStories, onRefresh]);
+    }, [projectId, mode, features, userStories, onRefresh]);
 
-    const toggleStorySelection = useCallback((storyId: string) => {
-        setSelectedStories(prev => {
+    const toggleItemSelection = useCallback((itemId: string) => {
+        setSelectedItems(prev => {
             const next = new Set(prev);
-            if (next.has(storyId)) {
-                next.delete(storyId);
+            if (next.has(itemId)) {
+                next.delete(itemId);
             } else {
-                next.add(storyId);
+                next.add(itemId);
             }
             return next;
         });
     }, []);
 
     const selectAllInMilestone = useCallback((milestoneId: string) => {
-        const stories = storiesByMilestone[milestoneId] || [];
-        setSelectedStories(prev => {
+        const items = mode === 'features'
+            ? featuresByMilestone[milestoneId] || []
+            : storiesByMilestone[milestoneId] || [];
+        setSelectedItems(prev => {
             const next = new Set(prev);
-            stories.forEach(s => next.add(s.id));
+            items.forEach(item => next.add(item.id));
             return next;
         });
-    }, [storiesByMilestone]);
+    }, [mode, featuresByMilestone, storiesByMilestone]);
 
     const startEditing = useCallback((milestone: Milestone) => {
         setEditingId(milestone.id);
@@ -218,15 +287,27 @@ export function MilestoneBoard({
     }, []);
 
     const cancelBulkMode = useCallback(() => {
-        setSelectedStories(new Set());
+        setSelectedItems(new Set());
         setBulkMode(false);
+    }, []);
+
+    const handleModeChange = useCallback((newMode: MilestoneBoardMode) => {
+        setMode(newMode);
+        setSelectedItems(new Set());
+        setBulkMode(false);
+        // Reset filters when switching modes since workstreams differ
+        setWorkstreamFilter('all');
+    }, []);
+
+    const handleDrop = useCallback((milestoneId: string | null) => {
+        // This is handled in the column components via drag/drop events
     }, []);
 
     return (
         <div className="space-y-6">
             <MilestoneBoardHeader
                 bulkMode={bulkMode}
-                selectedCount={selectedStories.size}
+                selectedCount={selectedItems.size}
                 milestones={milestones}
                 projectId={projectId}
                 onBulkAssign={handleBulkAssign}
@@ -236,6 +317,8 @@ export function MilestoneBoard({
                 onRefresh={onRefresh}
                 onUserStoryCreated={onUserStoryCreated}
                 onOpenCreateDialog={() => setIsCreating(true)}
+                mode={mode}
+                onModeChange={handleModeChange}
             />
 
             <MilestoneBoardFilters
@@ -254,13 +337,17 @@ export function MilestoneBoard({
             <div className="flex gap-4 overflow-x-auto pb-4">
                 <BacklogColumn
                     stories={storiesByMilestone.backlog}
+                    features={featuresByMilestone.backlog}
                     milestones={milestones}
                     bulkMode={bulkMode}
-                    selectedStories={selectedStories}
-                    onToggleStorySelect={toggleStorySelection}
+                    selectedItems={selectedItems}
+                    onToggleItemSelect={toggleItemSelection}
                     onSelectAllInMilestone={selectAllInMilestone}
                     onMoveStory={handleMoveStory}
-                    allStoriesAssigned={allStoriesAssigned}
+                    onMoveFeature={handleMoveFeature}
+                    allItemsAssigned={allItemsAssigned}
+                    mode={mode}
+                    onDrop={handleDrop}
                 />
 
                 {milestones.map(milestone => (
@@ -268,12 +355,14 @@ export function MilestoneBoard({
                         key={milestone.id}
                         milestone={milestone}
                         stories={storiesByMilestone[milestone.id] || []}
+                        features={featuresByMilestone[milestone.id] || []}
                         allMilestones={milestones}
                         bulkMode={bulkMode}
-                        selectedStories={selectedStories}
-                        onToggleStorySelect={toggleStorySelection}
+                        selectedItems={selectedItems}
+                        onToggleItemSelect={toggleItemSelection}
                         onSelectAllInMilestone={selectAllInMilestone}
                         onMoveStory={handleMoveStory}
+                        onMoveFeature={handleMoveFeature}
                         onStartEditing={startEditing}
                         onUpdateMilestone={handleUpdateMilestone}
                         onDeleteMilestone={handleDeleteMilestone}
@@ -282,6 +371,8 @@ export function MilestoneBoard({
                         editingId={editingId}
                         onCancelEditing={cancelEditing}
                         isSubmitting={isSubmitting}
+                        mode={mode}
+                        onDrop={handleDrop}
                     />
                 ))}
 

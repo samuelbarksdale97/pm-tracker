@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,8 +28,9 @@ import {
     Plus,
     Loader2,
     AlertCircle,
+    GripVertical,
 } from 'lucide-react';
-import { Epic, Feature, createEpic } from '@/lib/supabase';
+import { Epic, Feature, createEpic, reorderEpics } from '@/lib/supabase';
 import type { FeatureWithStories } from './miller-layout';
 
 interface EpicNavColumnProps {
@@ -48,6 +49,7 @@ interface EpicNavColumnProps {
     onEpicUpdated: (epic: Epic) => void;
     onEpicDeleted: (epicId: string) => void;
     onFeatureCreated: () => void;
+    onEpicsReordered?: (epicIds: string[]) => void;
 }
 
 const PRIORITIES = [
@@ -85,7 +87,55 @@ export function EpicNavColumn({
     onEpicUpdated,
     onEpicDeleted,
     onFeatureCreated,
+    onEpicsReordered,
 }: EpicNavColumnProps) {
+    const [draggedEpicId, setDraggedEpicId] = useState<string | null>(null);
+    const [dragOverEpicId, setDragOverEpicId] = useState<string | null>(null);
+
+    const handleDragStart = (epicId: string) => {
+        setDraggedEpicId(epicId);
+    };
+
+    const handleDragEnd = async () => {
+        if (draggedEpicId && dragOverEpicId && draggedEpicId !== dragOverEpicId) {
+            // Calculate new order
+            const newEpics = [...epics];
+            const draggedIndex = newEpics.findIndex(e => e.id === draggedEpicId);
+            const targetIndex = newEpics.findIndex(e => e.id === dragOverEpicId);
+
+            if (draggedIndex !== -1 && targetIndex !== -1) {
+                // Remove dragged item and insert at target position
+                const [draggedEpic] = newEpics.splice(draggedIndex, 1);
+                newEpics.splice(targetIndex, 0, draggedEpic);
+
+                // Get new order of epic IDs
+                const newEpicIds = newEpics.map(e => e.id);
+
+                // Save to database
+                try {
+                    await reorderEpics(projectId, newEpicIds);
+                    onEpicsReordered?.(newEpicIds);
+                } catch (err) {
+                    console.error('Failed to reorder epics:', err);
+                }
+            }
+        }
+
+        setDraggedEpicId(null);
+        setDragOverEpicId(null);
+    };
+
+    const handleDragOver = (e: React.DragEvent, epicId: string) => {
+        e.preventDefault();
+        if (epicId !== draggedEpicId) {
+            setDragOverEpicId(epicId);
+        }
+    };
+
+    const handleDragLeave = () => {
+        setDragOverEpicId(null);
+    };
+
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
@@ -126,6 +176,12 @@ export function EpicNavColumn({
                                 onSelect={() => onSelectEpic(epic.id)}
                                 onToggleExpand={() => onToggleEpicExpand(epic.id)}
                                 onSelectFeature={onSelectFeature}
+                                isDragging={draggedEpicId === epic.id}
+                                isDragOver={dragOverEpicId === epic.id}
+                                onDragStart={() => handleDragStart(epic.id)}
+                                onDragEnd={handleDragEnd}
+                                onDragOver={(e) => handleDragOver(e, epic.id)}
+                                onDragLeave={handleDragLeave}
                             />
                         ))}
                     </div>
@@ -146,6 +202,12 @@ function EpicTreeItem({
     onSelect,
     onToggleExpand,
     onSelectFeature,
+    isDragging,
+    isDragOver,
+    onDragStart,
+    onDragEnd,
+    onDragOver,
+    onDragLeave,
 }: {
     epic: Epic;
     features: FeatureWithStories[];
@@ -156,13 +218,29 @@ function EpicTreeItem({
     onSelect: () => void;
     onToggleExpand: () => void;
     onSelectFeature: (featureId: string | null) => void;
+    isDragging: boolean;
+    isDragOver: boolean;
+    onDragStart: () => void;
+    onDragEnd: () => void;
+    onDragOver: (e: React.DragEvent) => void;
+    onDragLeave: () => void;
 }) {
     const progress = epic.user_story_count && epic.user_story_count > 0
         ? Math.round(((epic.completed_story_count || 0) / epic.user_story_count) * 100)
         : 0;
 
     return (
-        <div>
+        <div
+            draggable
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            className={cn(
+                isDragging && "opacity-50",
+                isDragOver && "border-t-2 border-purple-500"
+            )}
+        >
             {/* Epic Row */}
             <div
                 className={cn(
@@ -172,6 +250,11 @@ function EpicTreeItem({
                         : "hover:bg-gray-800/50 border-l-2 border-transparent"
                 )}
             >
+                {/* Drag Handle */}
+                <div className="cursor-grab active:cursor-grabbing p-0.5 text-gray-600 hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <GripVertical className="w-3 h-3" />
+                </div>
+
                 {/* Expand/Collapse */}
                 <button
                     onClick={(e) => {

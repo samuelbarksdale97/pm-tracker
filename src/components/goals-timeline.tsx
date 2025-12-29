@@ -48,6 +48,8 @@ import {
     assignFeatureToGoal,
     calculateGoalHealth,
 } from '@/lib/supabase';
+import { analyzeGoalCapacity } from '@/lib/capacity-utils';
+import { CapacityIndicator } from '@/components/capacity-indicator';
 
 interface GoalsTimelineProps {
     projectId: string;
@@ -125,6 +127,9 @@ function GoalCard({
     // Calculate health status
     const health = calculateGoalHealth(goal);
     const healthConfig = HEALTH_CONFIG[health.status];
+
+    // Calculate capacity analysis
+    const capacityAnalysis = analyzeGoalCapacity(goal);
 
     return (
         <div
@@ -248,6 +253,13 @@ function GoalCard({
                 </div>
             </div>
 
+            {/* Capacity Warning (only show if tight or overloaded) */}
+            {goal.target_date && (capacityAnalysis.status === 'tight' || capacityAnalysis.status === 'overloaded') && (
+                <div className="mb-3 pl-4">
+                    <CapacityIndicator analysis={capacityAnalysis} compact />
+                </div>
+            )}
+
             {/* Footer */}
             <div className="flex items-center justify-between pl-4">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -349,6 +361,7 @@ function GoalDetailPanel({
 }) {
     const theme = THEME_COLORS[goal.theme_color || 'blue'];
     const features = goal.features || [];
+    const capacityAnalysis = analyzeGoalCapacity(goal);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -383,6 +396,13 @@ function GoalDetailPanel({
                             />
                         </div>
                     </div>
+
+                    {/* Capacity Analysis */}
+                    {goal.target_date && capacityAnalysis.status !== 'unknown' && (
+                        <div className="mt-4">
+                            <CapacityIndicator analysis={capacityAnalysis} showDetails />
+                        </div>
+                    )}
                 </div>
 
                 {/* Content */}

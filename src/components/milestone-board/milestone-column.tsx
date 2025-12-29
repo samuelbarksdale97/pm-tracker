@@ -24,17 +24,21 @@ import {
     AlertTriangle,
 } from 'lucide-react';
 import { StoryCard } from './story-card';
+import { FeatureCard } from './feature-card';
 import { MilestoneColumnProps } from './types';
+import { cn } from '@/lib/utils';
 
 export function MilestoneColumn({
     milestone,
     stories,
+    features,
     allMilestones,
     bulkMode,
-    selectedStories,
-    onToggleStorySelect,
+    selectedItems,
+    onToggleItemSelect,
     onSelectAllInMilestone,
     onMoveStory,
+    onMoveFeature,
     onStartEditing,
     onUpdateMilestone,
     onDeleteMilestone,
@@ -43,10 +47,14 @@ export function MilestoneColumn({
     editingId,
     onCancelEditing,
     isSubmitting,
+    mode,
+    onDrop,
+    isDragOver,
 }: MilestoneColumnProps) {
     const [editName, setEditName] = useState(milestone.name);
     const [editStartDate, setEditStartDate] = useState(milestone.start_date || '');
     const [editEndDate, setEditEndDate] = useState(milestone.target_date);
+    const [localDragOver, setLocalDragOver] = useState(false);
 
     const isEditing = editingId === milestone.id;
 
@@ -63,14 +71,21 @@ export function MilestoneColumn({
     };
 
     const getProgress = () => {
-        if (stories.length === 0) return { done: 0, total: 0, percentage: 0 };
-        const done = stories.filter(s => s.status === 'Done').length;
-        return { done, total: stories.length, percentage: Math.round((done / stories.length) * 100) };
+        if (mode === 'features') {
+            if (features.length === 0) return { done: 0, total: 0, percentage: 0 };
+            const done = features.filter(f => f.status === 'Done').length;
+            return { done, total: features.length, percentage: Math.round((done / features.length) * 100) };
+        } else {
+            if (stories.length === 0) return { done: 0, total: 0, percentage: 0 };
+            const done = stories.filter(s => s.status === 'Done').length;
+            return { done, total: stories.length, percentage: Math.round((done / stories.length) * 100) };
+        }
     };
 
     const progress = getProgress();
     const overdueStatus = isOverdue();
     const unlockedMilestones = allMilestones.filter(m => !m.is_locked);
+    const items = mode === 'features' ? features : stories;
 
     const handleStartEditing = () => {
         setEditName(milestone.name);
@@ -83,11 +98,48 @@ export function MilestoneColumn({
         onUpdateMilestone(milestone.id, editName, editStartDate, editEndDate);
     };
 
+    const handleDragOver = (e: React.DragEvent) => {
+        if (milestone.is_locked) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setLocalDragOver(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        setLocalDragOver(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setLocalDragOver(false);
+        if (milestone.is_locked) return;
+
+        try {
+            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+            if (data.type === 'feature') {
+                onMoveFeature(data.id, milestone.id);
+            } else if (data.type === 'story') {
+                onMoveStory(data.id, milestone.id);
+            }
+        } catch (err) {
+            console.error('Error parsing drop data:', err);
+        }
+    };
+
     return (
         <Card
-            className={`bg-gray-900 border-gray-800 min-w-[320px] max-w-[320px] flex-shrink-0 ${milestone.is_locked ? 'opacity-75' : ''} ${overdueStatus ? 'border-red-800' : ''}`}
+            className={cn(
+                'bg-gray-900 border-gray-800 min-w-[320px] max-w-[320px] flex-shrink-0 transition-all',
+                milestone.is_locked && 'opacity-75',
+                overdueStatus && 'border-red-800',
+                (isDragOver || localDragOver) && !milestone.is_locked && 'border-blue-500 bg-blue-500/5'
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
         >
-            <div className="p-4 border-b border-gray-800">
+            <div className="p-4 border-b border-gray-800 min-h-[88px]">
                 {isEditing ? (
                     <div className="space-y-2">
                         <Input
@@ -140,7 +192,7 @@ export function MilestoneColumn({
                                 )}
                             </div>
                             <div className="flex items-center gap-1">
-                                {bulkMode && stories.length > 0 && (
+                                {bulkMode && items.length > 0 && (
                                     <Button
                                         variant="ghost"
                                         size="sm"
@@ -190,7 +242,7 @@ export function MilestoneColumn({
                                 {formatDate(milestone.target_date)}
                             </span>
                             <span className="text-gray-600">|</span>
-                            <span>{progress.done}/{progress.total} done</span>
+                            <span>{progress.done}/{progress.total} {mode === 'features' ? 'features' : 'stories'}</span>
                         </div>
                         {progress.total > 0 && (
                             <div className="mt-2 h-1 bg-gray-700 rounded-full overflow-hidden">
@@ -204,22 +256,39 @@ export function MilestoneColumn({
                 )}
             </div>
             <div className="p-2 space-y-2 max-h-[500px] overflow-y-auto">
-                {stories.map(story => (
-                    <StoryCard
-                        key={story.id}
-                        story={story}
-                        milestones={unlockedMilestones}
-                        onMove={milestone.is_locked ? undefined : onMoveStory}
-                        bulkMode={bulkMode}
-                        isSelected={selectedStories.has(story.id)}
-                        onToggleSelect={() => onToggleStorySelect(story.id)}
-                        disabled={milestone.is_locked}
-                    />
-                ))}
-                {stories.length === 0 && (
+                {mode === 'features' ? (
+                    features.map(feature => (
+                        <FeatureCard
+                            key={feature.id}
+                            feature={feature}
+                            milestones={unlockedMilestones}
+                            onMove={milestone.is_locked ? undefined : onMoveFeature}
+                            bulkMode={bulkMode}
+                            isSelected={selectedItems.has(feature.id)}
+                            onToggleSelect={() => onToggleItemSelect(feature.id)}
+                            disabled={milestone.is_locked}
+                        />
+                    ))
+                ) : (
+                    stories.map(story => (
+                        <StoryCard
+                            key={story.id}
+                            story={story}
+                            milestones={unlockedMilestones}
+                            onMove={milestone.is_locked ? undefined : onMoveStory}
+                            bulkMode={bulkMode}
+                            isSelected={selectedItems.has(story.id)}
+                            onToggleSelect={() => onToggleItemSelect(story.id)}
+                            disabled={milestone.is_locked}
+                        />
+                    ))
+                )}
+                {items.length === 0 && (
                     <div className="text-center py-8">
                         <p className="text-gray-600 text-sm">
-                            {milestone.is_locked ? 'Milestone locked' : 'Drag stories here or use dropdown'}
+                            {milestone.is_locked
+                                ? 'Milestone locked'
+                                : `Drag ${mode === 'features' ? 'features' : 'stories'} here`}
                         </p>
                     </div>
                 )}

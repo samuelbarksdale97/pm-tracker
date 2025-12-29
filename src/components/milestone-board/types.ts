@@ -1,10 +1,13 @@
-import { UserStory, Milestone } from '@/lib/supabase';
+import { UserStory, Milestone, Feature } from '@/lib/supabase';
 import { User, Shield, Briefcase, Building2, Users } from 'lucide-react';
+
+export type MilestoneBoardMode = 'stories' | 'features';
 
 export interface MilestoneBoardProps {
     projectId: string;
     milestones: Milestone[];
     userStories: UserStory[];
+    features: Feature[];
     onRefresh: () => void;
     onUserStoryCreated?: (userStory: UserStory) => void;
 }
@@ -17,17 +20,22 @@ export interface StoryCardProps {
     isSelected?: boolean;
     onToggleSelect?: () => void;
     disabled?: boolean;
+    isDragging?: boolean;
+    onDragStart?: (storyId: string) => void;
+    onDragEnd?: () => void;
 }
 
 export interface MilestoneColumnProps {
     milestone: Milestone;
     stories: UserStory[];
+    features: Feature[];
     allMilestones: Milestone[];
     bulkMode: boolean;
-    selectedStories: Set<string>;
-    onToggleStorySelect: (storyId: string) => void;
+    selectedItems: Set<string>;
+    onToggleItemSelect: (itemId: string) => void;
     onSelectAllInMilestone: (milestoneId: string) => void;
     onMoveStory: (storyId: string, milestoneId: string | null) => void;
+    onMoveFeature: (featureId: string, milestoneId: string | null) => void;
     onStartEditing: (milestone: Milestone) => void;
     onUpdateMilestone: (id: string, name: string, startDate: string, endDate: string) => void;
     onDeleteMilestone: (id: string) => void;
@@ -36,17 +44,25 @@ export interface MilestoneColumnProps {
     editingId: string | null;
     onCancelEditing: () => void;
     isSubmitting: boolean;
+    mode: MilestoneBoardMode;
+    onDrop: (milestoneId: string) => void;
+    isDragOver?: boolean;
 }
 
 export interface BacklogColumnProps {
     stories: UserStory[];
+    features: Feature[];
     milestones: Milestone[];
     bulkMode: boolean;
-    selectedStories: Set<string>;
-    onToggleStorySelect: (storyId: string) => void;
+    selectedItems: Set<string>;
+    onToggleItemSelect: (itemId: string) => void;
     onSelectAllInMilestone: (milestoneId: string) => void;
     onMoveStory: (storyId: string, milestoneId: string | null) => void;
-    allStoriesAssigned: boolean;
+    onMoveFeature: (featureId: string, milestoneId: string | null) => void;
+    allItemsAssigned: boolean;
+    mode: MilestoneBoardMode;
+    onDrop: (milestoneId: string | null) => void;
+    isDragOver?: boolean;
 }
 
 export interface MilestoneBoardHeaderProps {
@@ -61,6 +77,8 @@ export interface MilestoneBoardHeaderProps {
     onRefresh: () => void;
     onUserStoryCreated?: (userStory: UserStory) => void;
     onOpenCreateDialog: () => void;
+    mode: MilestoneBoardMode;
+    onModeChange: (mode: MilestoneBoardMode) => void;
 }
 
 export interface MilestoneBoardFiltersProps {

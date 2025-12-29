@@ -164,6 +164,14 @@ export interface TaskComment {
 // Epic & Project Context Types
 // ============================================
 
+export interface CustomPersona {
+    id: string;
+    name: string;
+    description: string;
+    icon?: string; // lucide icon name
+    color?: string; // tailwind color class
+}
+
 export interface ProjectBrief {
     vision?: string;
     target_users?: string[];
@@ -177,7 +185,18 @@ export interface ProjectBrief {
     };
     business_goals?: string[];
     constraints?: string[];
+    // Custom personas for AI story generation
+    custom_personas?: CustomPersona[];
 }
+
+// Default personas used when no custom ones are defined
+export const DEFAULT_PERSONAS: CustomPersona[] = [
+    { id: 'member', name: 'Member', description: 'End users/customers who use the main application' },
+    { id: 'admin', name: 'Admin', description: 'System administrators with elevated privileges' },
+    { id: 'staff', name: 'Staff', description: 'Internal team members (employees)' },
+    { id: 'business', name: 'Business', description: 'Business owners/managers who need reporting/oversight' },
+    { id: 'guest', name: 'Guest', description: 'Unauthenticated visitors' },
+];
 
 export interface Epic {
     id: string;
@@ -206,6 +225,7 @@ export interface Feature {
     project_id: string;
     epic_id: string;
     goal_id: string | null; // Link to parent Goal (for Goals timeline)
+    milestone_id: string | null; // Link to Milestone (for sprint planning)
     name: string;
     description: string | null;
     status: 'Not Started' | 'In Progress' | 'Done' | 'On Hold';
@@ -518,6 +538,41 @@ export async function deleteUserStory(id: string) {
         .from('pm_user_stories')
         .delete()
         .eq('id', id);
+
+    if (error) throw error;
+}
+
+/**
+ * Bulk update user stories (for bulk actions)
+ */
+export async function bulkUpdateUserStories(
+    ids: string[],
+    updates: Partial<Pick<UserStory, 'status' | 'priority' | 'owner_id'>>
+) {
+    const { data, error } = await supabase
+        .from('pm_user_stories')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .in('id', ids)
+        .select();
+
+    if (error) throw error;
+    return data as UserStory[];
+}
+
+/**
+ * Bulk delete user stories
+ */
+export async function bulkDeleteUserStories(ids: string[]) {
+    // First, unlink any tasks from these user stories
+    await supabase
+        .from('pm_stories')
+        .update({ user_story_id: null })
+        .in('user_story_id', ids);
+
+    const { error } = await supabase
+        .from('pm_user_stories')
+        .delete()
+        .in('id', ids);
 
     if (error) throw error;
 }
@@ -851,6 +906,66 @@ export async function updateUserStoryMilestone(storyId: string, milestoneId: str
         .from('pm_user_stories')
         .update({ milestone_id: milestoneId })
         .eq('id', storyId);
+
+    if (error) throw error;
+}
+
+/**
+ * Update feature milestone assignment
+ */
+export async function updateFeatureMilestone(featureId: string, milestoneId: string | null) {
+    const { error } = await supabase
+        .from('pm_features')
+        .update({ milestone_id: milestoneId })
+        .eq('id', featureId);
+
+    if (error) throw error;
+}
+
+/**
+ * Get features for a project with milestone info
+ */
+export async function getFeaturesForMilestoneBoard(projectId: string): Promise<Feature[]> {
+    const { data, error } = await supabase
+        .from('pm_features')
+        .select(`
+            *,
+            epic:pm_epics!inner(id, name),
+            user_stories:pm_user_stories(count)
+        `)
+        .eq('project_id', projectId)
+        .order('display_order');
+
+    if (error) throw error;
+
+    // Calculate story counts
+    return (data || []).map(feature => ({
+        ...feature,
+        user_story_count: feature.user_stories?.[0]?.count || 0,
+    }));
+}
+
+/**
+ * Bulk assign features to a milestone
+ */
+export async function bulkAssignFeatures(featureIds: string[], milestoneId: string | null) {
+    const { error } = await supabase
+        .from('pm_features')
+        .update({ milestone_id: milestoneId })
+        .in('id', featureIds);
+
+    if (error) throw error;
+    return featureIds.length;
+}
+
+/**
+ * Reset all feature milestone assignments for a project
+ */
+export async function resetAllFeatureMilestoneAssignments(projectId: string) {
+    const { error } = await supabase
+        .from('pm_features')
+        .update({ milestone_id: null })
+        .eq('project_id', projectId);
 
     if (error) throw error;
 }
@@ -1261,6 +1376,21 @@ export async function deleteEpic(epicId: string): Promise<void> {
         .eq('id', epicId);
 
     if (error) throw error;
+}
+
+/**
+ * Reorder epics within a project
+ */
+export async function reorderEpics(projectId: string, epicIds: string[]): Promise<void> {
+    for (let i = 0; i < epicIds.length; i++) {
+        const { error } = await supabase
+            .from('pm_epics')
+            .update({ display_order: i + 1, updated_at: new Date().toISOString() })
+            .eq('id', epicIds[i])
+            .eq('project_id', projectId);
+
+        if (error) throw error;
+    }
 }
 
 /**

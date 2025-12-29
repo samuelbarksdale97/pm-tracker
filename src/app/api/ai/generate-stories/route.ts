@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateStoriesForFeature, FeatureContext } from '@/lib/ai/story-generator';
-import { getFeature, getEpic, getProject, getUserStoriesForFeature } from '@/lib/supabase';
+import { getFeature, getEpic, getProjectWithContext, getUserStoriesForFeature } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
     try {
@@ -33,8 +33,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Fetch the project (parent of epic)
-        const project = await getProject(epic.project_id);
+        // Fetch the project with context (includes project_brief with custom personas)
+        const project = await getProjectWithContext(epic.project_id);
         if (!project) {
             return NextResponse.json(
                 { error: 'Project not found for this epic' },
@@ -51,12 +51,16 @@ export async function POST(request: NextRequest) {
             status: s.status,
         }));
 
+        // Extract custom personas from project brief (if available)
+        const customPersonas = project.project_brief?.custom_personas;
+
         // Build the context
         const context: FeatureContext = {
             feature,
             epic,
             project,
             existingStories: existingStoriesForContext.length > 0 ? existingStoriesForContext : undefined,
+            customPersonas,
         };
 
         console.log('[API] Generating stories for feature:', {
@@ -66,6 +70,7 @@ export async function POST(request: NextRequest) {
             projectName: project.name,
             existingStoryCount: existingStoriesForContext.length,
             mode: existingStoriesForContext.length > 0 ? 'diff' : 'full',
+            customPersonaCount: customPersonas?.length || 0,
         });
 
         // Generate stories

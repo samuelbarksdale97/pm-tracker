@@ -1,68 +1,57 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Story, Workstream } from '@/lib/supabase';
+import { Story, Workstream, UserStory } from '@/lib/supabase';
 import { Card } from '@/components/ui/card';
 
 interface ProgressDashboardProps {
     stories: Story[];
+    userStories: UserStory[];
     workstreams: Workstream[];
     onStoryClick?: (story: Story) => void;
 }
 
-export function ProgressDashboard({ stories, workstreams, onStoryClick }: ProgressDashboardProps) {
+export function ProgressDashboard({ userStories }: ProgressDashboardProps) {
+    // Use userStories as the primary data source for progress tracking
     const stats = useMemo(() => {
         const byStatus = {
-            'Not Started': stories.filter(t => t.status === 'Not Started').length,
-            'In Progress': stories.filter(t => t.status === 'In Progress').length,
-            'Done': stories.filter(t => t.status === 'Done').length,
-            'Blocked': stories.filter(t => t.status === 'Blocked').length,
-            'On Hold': stories.filter(t => t.status === 'On Hold').length,
+            'Not Started': userStories.filter(s => s.status === 'Not Started').length,
+            'In Progress': userStories.filter(s => s.status === 'In Progress').length,
+            'Done': userStories.filter(s => s.status === 'Done').length,
+            'Blocked': userStories.filter(s => s.status === 'Blocked').length,
+            'Testing': userStories.filter(s => s.status === 'Testing').length,
         };
 
         const byPriority = {
-            'P0': stories.filter(t => t.priority === 'P0').length,
-            'P1': stories.filter(t => t.priority === 'P1').length,
-            'P2': stories.filter(t => t.priority === 'P2').length,
+            'P0': userStories.filter(s => s.priority === 'P0').length,
+            'P1': userStories.filter(s => s.priority === 'P1').length,
+            'P2': userStories.filter(s => s.priority === 'P2').length,
         };
 
-        const byWorkstream = workstreams.map(ws => {
-            const wsStories = stories.filter(t => t.workstream_id === ws.id);
-            const done = wsStories.filter(t => t.status === 'Done').length;
-            return {
-                id: ws.id,
-                name: ws.name,
-                color: ws.color || '#666',
-                total: wsStories.length,
-                done,
-                percentage: wsStories.length > 0 ? Math.round((done / wsStories.length) * 100) : 0,
-            };
+        // Group by feature_area instead of workstream for user stories
+        const featureAreas = new Map<string, { name: string; total: number; done: number }>();
+        userStories.forEach(s => {
+            const area = s.feature_area || 'Uncategorized';
+            const existing = featureAreas.get(area) || { name: area, total: 0, done: 0 };
+            existing.total++;
+            if (s.status === 'Done') existing.done++;
+            featureAreas.set(area, existing);
         });
 
-        // Estimate total days
-        const totalEstimate = stories.reduce((sum, t) => {
-            if (!t.estimate) return sum;
-            const match = t.estimate.match(/(\d+)([dh])/);
-            if (!match) return sum;
-            const [, num, unit] = match;
-            return sum + (unit === 'd' ? parseInt(num) : parseInt(num) / 8);
-        }, 0);
+        const byFeatureArea = Array.from(featureAreas.values()).map((fa, i) => ({
+            id: fa.name,
+            name: fa.name,
+            color: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'][i % 8],
+            total: fa.total,
+            done: fa.done,
+            percentage: fa.total > 0 ? Math.round((fa.done / fa.total) * 100) : 0,
+        }));
 
-        const completedEstimate = stories
-            .filter(t => t.status === 'Done')
-            .reduce((sum, t) => {
-                if (!t.estimate) return sum;
-                const match = t.estimate.match(/(\d+)([dh])/);
-                if (!match) return sum;
-                const [, num, unit] = match;
-                return sum + (unit === 'd' ? parseInt(num) : parseInt(num) / 8);
-            }, 0);
+        return { byStatus, byPriority, byFeatureArea };
+    }, [userStories]);
 
-        return { byStatus, byPriority, byWorkstream, totalEstimate, completedEstimate };
-    }, [stories, workstreams]);
-
-    const completionPercentage = stories.length > 0
-        ? Math.round((stats.byStatus.Done / stories.length) * 100)
+    const completionPercentage = userStories.length > 0
+        ? Math.round((stats.byStatus.Done / userStories.length) * 100)
         : 0;
 
     return (
@@ -97,7 +86,7 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                     </div>
                 </div>
                 <div className="mt-4 text-center text-gray-400">
-                    <span className="text-green-400 font-semibold">{stats.byStatus.Done}</span> of {stories.length} stories
+                    <span className="text-green-400 font-semibold">{stats.byStatus.Done}</span> of {userStories.length} user stories
                 </div>
             </Card>
 
@@ -110,7 +99,7 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                         { label: 'In Progress', count: stats.byStatus['In Progress'], color: '#3B82F6' },
                         { label: 'Done', count: stats.byStatus.Done, color: '#10B981' },
                         { label: 'Blocked', count: stats.byStatus.Blocked, color: '#EF4444' },
-                        { label: 'On Hold', count: stats.byStatus['On Hold'], color: '#F59E0B' },
+                        { label: 'Testing', count: stats.byStatus.Testing, color: '#F59E0B' },
                     ].map((item) => (
                         <div key={item.label} className="flex items-center gap-3">
                             <span
@@ -126,7 +115,7 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                                     <div
                                         className="h-full rounded-full transition-all"
                                         style={{
-                                            width: `${(item.count / stories.length) * 100}%`,
+                                            width: `${userStories.length > 0 ? (item.count / userStories.length) * 100 : 0}%`,
                                             backgroundColor: item.color
                                         }}
                                     />
@@ -146,7 +135,7 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                         { label: 'P1', count: stats.byPriority.P1, color: '#F59E0B', desc: 'Important' },
                         { label: 'P2', count: stats.byPriority.P2, color: '#6B7280', desc: 'Nice-to-have' },
                     ].map((item) => {
-                        const height = (item.count / stories.length) * 100;
+                        const height = userStories.length > 0 ? (item.count / userStories.length) * 100 : 0;
                         return (
                             <div key={item.label} className="flex flex-col items-center gap-2">
                                 <span className="text-2xl font-bold" style={{ color: item.color }}>
@@ -169,37 +158,37 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                 </div>
             </Card>
 
-            {/* Workstream Progress */}
+            {/* Feature Area Progress */}
             <Card className="bg-gray-900 border-gray-800 p-6 col-span-full">
-                <h3 className="text-lg font-semibold text-white mb-4">Workstream Progress</h3>
+                <h3 className="text-lg font-semibold text-white mb-4">Progress by Feature Area</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {stats.byWorkstream.map((ws) => (
+                    {stats.byFeatureArea.map((fa) => (
                         <div
-                            key={ws.id}
+                            key={fa.id}
                             className="p-4 rounded-lg"
-                            style={{ backgroundColor: `${ws.color}15` }}
+                            style={{ backgroundColor: `${fa.color}15` }}
                         >
                             <div className="flex items-center gap-2 mb-2">
                                 <span
                                     className="w-3 h-3 rounded-full"
-                                    style={{ backgroundColor: ws.color }}
+                                    style={{ backgroundColor: fa.color }}
                                 />
-                                <span className="font-medium text-white">{ws.name}</span>
+                                <span className="font-medium text-white text-sm">{fa.name}</span>
                             </div>
                             <div className="flex items-baseline gap-2 mb-2">
-                                <span className="text-3xl font-bold" style={{ color: ws.color }}>
-                                    {ws.percentage}%
+                                <span className="text-3xl font-bold" style={{ color: fa.color }}>
+                                    {fa.percentage}%
                                 </span>
                                 <span className="text-gray-400 text-sm">
-                                    ({ws.done}/{ws.total})
+                                    ({fa.done}/{fa.total})
                                 </span>
                             </div>
                             <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
                                 <div
                                     className="h-full rounded-full transition-all"
                                     style={{
-                                        width: `${ws.percentage}%`,
-                                        backgroundColor: ws.color
+                                        width: `${fa.percentage}%`,
+                                        backgroundColor: fa.color
                                     }}
                                 />
                             </div>
@@ -208,45 +197,17 @@ export function ProgressDashboard({ stories, workstreams, onStoryClick }: Progre
                 </div>
             </Card>
 
-            {/* Blockers Alert */}
+            {/* Blockers Alert - from tasks if any are blocked */}
             {stats.byStatus.Blocked > 0 && (
                 <Card className="bg-red-950 border-red-800 p-6 col-span-full">
                     <h3 className="text-lg font-semibold text-red-400 mb-2">
-                        ⚠️ {stats.byStatus.Blocked} Blocked Tasks
+                        {stats.byStatus.Blocked} Blocked User Stories
                     </h3>
                     <p className="text-gray-300 text-sm">
-                        These tasks require attention before work can proceed:
+                        These user stories require attention before work can proceed.
                     </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {stories
-                            .filter(t => t.status === 'Blocked')
-                            .map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => onStoryClick?.(t)}
-                                    className="bg-red-900 text-red-300 px-2 py-1 rounded text-sm hover:bg-red-800 hover:text-red-200 transition-colors cursor-pointer text-left"
-                                >
-                                    {t.name.substring(0, 40)}{t.name.length > 40 ? '...' : ''}
-                                </button>
-                            ))}
-                    </div>
                 </Card>
             )}
-
-            {/* Time Estimate */}
-            <Card className="bg-gray-900 border-gray-800 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Estimated Effort</h3>
-                <div className="text-center">
-                    <div className="text-4xl font-bold text-blue-400 mb-1">
-                        {Math.round(stats.totalEstimate)} days
-                    </div>
-                    <div className="text-gray-400 text-sm mb-4">Total estimated</div>
-                    <div className="text-2xl font-semibold text-green-400">
-                        {Math.round(stats.completedEstimate)} days
-                    </div>
-                    <div className="text-gray-400 text-sm">Completed</div>
-                </div>
-            </Card>
         </div>
     );
 }

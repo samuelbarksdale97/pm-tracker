@@ -1,0 +1,1166 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { format, differenceInDays, isPast, isToday, compareAsc } from 'date-fns';
+import {
+  CheckCircle2,
+  Circle,
+  AlertTriangle,
+  Clock,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Trash2,
+  GripVertical,
+  Target,
+  MessageCircleQuestion,
+  Check,
+  X,
+} from 'lucide-react';
+
+// Types
+interface Milestone {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  status: 'not_started' | 'in_progress' | 'complete' | 'blocked';
+  owner: string;
+  notes?: string;
+}
+
+interface OpenQuestion {
+  id: string;
+  question: string;
+  context?: string;
+  status: 'open' | 'answered' | 'deferred';
+  answer?: string;
+  answeredDate?: string;
+  category: 'product' | 'technical' | 'business' | 'other';
+}
+
+// Helper to parse date string as local date
+function parseDate(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00');
+}
+
+// Helper to sort milestones by date properly
+function sortByDate(milestones: Milestone[]): Milestone[] {
+  return [...milestones].sort((a, b) => {
+    const dateA = parseDate(a.date);
+    const dateB = parseDate(b.date);
+    return compareAsc(dateA, dateB);
+  });
+}
+
+// Health calculation
+type Health = 'on_track' | 'at_risk' | 'behind' | 'complete';
+
+function calculateHealth(milestone: Milestone): Health {
+  if (milestone.status === 'complete') return 'complete';
+  if (milestone.status === 'blocked') return 'behind';
+
+  const targetDate = parseDate(milestone.date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const daysUntil = differenceInDays(targetDate, today);
+
+  if (isPast(targetDate) && !isToday(targetDate)) return 'behind';
+  if (daysUntil <= 3 && milestone.status === 'not_started') return 'at_risk';
+  if (daysUntil <= 7 && milestone.status === 'not_started') return 'at_risk';
+  return 'on_track';
+}
+
+// Health colors
+const healthConfig: Record<Health, { bg: string; text: string; border: string; label: string }> = {
+  on_track: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30', label: 'On Track' },
+  at_risk: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', label: 'At Risk' },
+  behind: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30', label: 'Behind' },
+  complete: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Complete' },
+};
+
+// Status icons
+const statusConfig: Record<Milestone['status'], { icon: typeof Circle; color: string; label: string }> = {
+  not_started: { icon: Circle, color: 'text-gray-400', label: 'Not Started' },
+  in_progress: { icon: Clock, color: 'text-blue-400', label: 'In Progress' },
+  complete: { icon: CheckCircle2, color: 'text-green-400', label: 'Complete' },
+  blocked: { icon: AlertTriangle, color: 'text-red-400', label: 'Blocked' },
+};
+
+// Version for cache busting when defaults change
+const DATA_VERSION = 5;
+
+// Question categories config
+const categoryConfig: Record<OpenQuestion['category'], { label: string; color: string; bg: string }> = {
+  product: { label: 'Product', color: 'text-purple-400', bg: 'bg-purple-500/10' },
+  technical: { label: 'Technical', color: 'text-blue-400', bg: 'bg-blue-500/10' },
+  business: { label: 'Business', color: 'text-green-400', bg: 'bg-green-500/10' },
+  other: { label: 'Other', color: 'text-gray-400', bg: 'bg-gray-500/10' },
+};
+
+// Default open questions from meeting notes
+const defaultQuestions: OpenQuestion[] = [
+  {
+    id: 'q1',
+    question: 'Do we want to allow members to choose the table they book?',
+    context: 'Does this differ between Brunch/Dinner/Bottle Service?',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q2',
+    question: 'What are the finalized membership tier names, prices, and perks?',
+    context: 'Need tier definitions to build the membership purchase flow and pricing UI.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q3',
+    question: 'Can members purchase/upgrade to a higher tier mid-cycle?',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q4',
+    question: 'Are guests allowed to download and use the app?',
+    context: 'Or is it members-only? Affects onboarding flow design.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q5',
+    question: 'How do guest invite codes work?',
+    context: 'QR code vs shareable link vs manual code entry?',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q6',
+    question: 'How many guests can a member bring per visit?',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q7',
+    question: 'What amenities should be listed in the Membership & Rewards section?',
+    context: 'e.g., valet, coat check, reserved parking, complimentary drinks, etc.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q8',
+    question: 'What member profile fields should be editable?',
+    context: 'Name, birthday, email, phone, photo?',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q9',
+    question: 'How does the in-venue Payment Tab work?',
+    context: 'Is it scanned at bar? Tracking free drinks or actual purchases? (Phase 2 feature)',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q10',
+    question: 'Apple Developer Account - has Marc purchased it?',
+    context: '$99 required for iOS App Store. Blocker for app submission.',
+    status: 'open',
+    category: 'business'
+  },
+  {
+    id: 'q11',
+    question: 'OpenTable Integration - how do we handle table reservations?',
+    context: 'OpenTable has NO public API. Options: (1) Deep link to OpenTable for reservations, (2) Create separate member-only table inventory outside OpenTable, (3) Manual sync where staff updates both systems. This is a MAJOR BLOCKER for the reservation feature.',
+    status: 'open',
+    category: 'technical'
+  },
+  {
+    id: 'q12',
+    question: 'Does bottle service go through OpenTable or is it separate?',
+    context: 'Bottle service reservations may already be managed outside OpenTable. Need to confirm current workflow.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q13',
+    question: 'Real-time table availability - how do we prevent double bookings?',
+    context: 'If we manage member reservations separately from OpenTable, we need a strategy to prevent conflicts. Options: dedicated member tables, time-based holds, staff coordination.',
+    status: 'open',
+    category: 'technical'
+  },
+  {
+    id: 'q14',
+    question: 'QR Code Scanner - what should we use for member check-in?',
+    context: 'Options: (1) Use built-in phone camera (iOS 11+/modern Android) - simplest, no extra app needed. (2) Dedicated scanner app for staff - EventSmart, Sched Count, etc. (3) Build custom scanner into admin portal. Need to decide: Who scans? Staff at door or self-check-in? What data gets captured?',
+    status: 'open',
+    category: 'technical'
+  },
+  {
+    id: 'q15',
+    question: 'Age verification - what method should we implement?',
+    context: 'Options: (1) ID scan services (Jumio, Onfido, Veriff) - expensive but thorough. (2) Manual verification by staff on first visit. (3) Date of birth entry with terms acceptance. This is a compliance requirement for the 21+ venue.',
+    status: 'open',
+    category: 'technical'
+  },
+  {
+    id: 'q16',
+    question: 'Who manages the admin portal?',
+    context: 'Staff will need to: create/edit events, manage reservations, view member lists, update membership tiers, send push notifications. Do all staff get access, or just managers?',
+    status: 'open',
+    category: 'business'
+  },
+  {
+    id: 'q17',
+    question: 'Push notification strategy - what triggers notifications?',
+    context: 'Potential triggers: new events posted, reservation reminders, membership renewal, special offers. Need to decide frequency and opt-in vs opt-out.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q18',
+    question: 'Event creation workflow - who creates events and how?',
+    context: 'Are events created by Park staff in admin portal? Synced from another calendar? How far in advance? What info is required (capacity, price, dress code)?',
+    status: 'open',
+    category: 'product'
+  },
+];
+
+// Default milestones for Park at 14th
+// Timeline: Dec 29, 2025 -> Mar 15, 2026
+const defaultMilestones: Milestone[] = [
+  { id: '1', name: 'Design Sign-off', date: '2025-12-29', status: 'in_progress', owner: 'Stakeholders', notes: 'Get final approval on Lovable prototype' },
+  { id: '2', name: 'Apple Dev Account', date: '2026-01-02', status: 'not_started', owner: 'Marc', notes: '$99 purchase needed for iOS App Store' },
+  { id: '3', name: 'Technical De-Risk', date: '2026-01-10', status: 'not_started', owner: 'NexArk', notes: 'Payments, age verification, wallet integration confirmed' },
+  { id: '4', name: 'Auth Complete', date: '2026-01-17', status: 'not_started', owner: 'RDG', notes: 'Users can sign up, log in, create profiles' },
+  { id: '5', name: 'Core Features', date: '2026-01-31', status: 'not_started', owner: 'RDG + NexArk', notes: 'Events, RSVP, reservations, payments functional' },
+  { id: '6', name: 'Feature Complete', date: '2026-02-15', status: 'not_started', owner: 'RDG + NexArk', notes: 'All features built, ready for testing' },
+  { id: '7', name: 'UAT Complete', date: '2026-03-07', status: 'not_started', owner: 'Stakeholders', notes: 'User acceptance testing with real members' },
+  { id: '8', name: 'Launch', date: '2026-03-15', status: 'not_started', owner: 'All', notes: 'Public release on App Store and Google Play' },
+];
+
+// LocalStorage keys
+const STORAGE_KEY = 'park14th_milestones';
+const QUESTIONS_KEY = 'park14th_questions';
+const VERSION_KEY = 'park14th_data_version';
+
+export default function TimelinePage() {
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [questions, setQuestions] = useState<OpenQuestion[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddQuestionForm, setShowAddQuestionForm] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [questionFilter, setQuestionFilter] = useState<'all' | 'open' | 'answered'>('all');
+
+  // Load from localStorage on mount, with version check
+  useEffect(() => {
+    const savedVersion = localStorage.getItem(VERSION_KEY);
+    const savedMilestones = localStorage.getItem(STORAGE_KEY);
+    const savedQuestions = localStorage.getItem(QUESTIONS_KEY);
+
+    // If version mismatch or no data, use defaults
+    if (savedVersion !== String(DATA_VERSION) || !savedMilestones) {
+      setMilestones(defaultMilestones);
+      setQuestions(defaultQuestions);
+      localStorage.setItem(VERSION_KEY, String(DATA_VERSION));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultMilestones));
+      localStorage.setItem(QUESTIONS_KEY, JSON.stringify(defaultQuestions));
+    } else {
+      try {
+        setMilestones(JSON.parse(savedMilestones));
+        setQuestions(savedQuestions ? JSON.parse(savedQuestions) : defaultQuestions);
+      } catch {
+        setMilestones(defaultMilestones);
+        setQuestions(defaultQuestions);
+      }
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // Save to localStorage on change (only after initial load)
+  useEffect(() => {
+    if (isLoaded && milestones.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(milestones));
+    }
+  }, [milestones, isLoaded]);
+
+  useEffect(() => {
+    if (isLoaded && questions.length > 0) {
+      localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions));
+    }
+  }, [questions, isLoaded]);
+
+  // Update milestone
+  const updateMilestone = (id: string, updates: Partial<Milestone>) => {
+    setMilestones(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  };
+
+  // Delete milestone
+  const deleteMilestone = (id: string) => {
+    if (confirm('Delete this milestone?')) {
+      setMilestones(prev => prev.filter(m => m.id !== id));
+    }
+  };
+
+  // Add milestone
+  const addMilestone = (milestone: Omit<Milestone, 'id'>) => {
+    const newMilestone: Milestone = {
+      ...milestone,
+      id: Date.now().toString(),
+    };
+    setMilestones(prev => sortByDate([...prev, newMilestone]));
+    setShowAddForm(false);
+  };
+
+  // Reset to defaults
+  const resetToDefaults = () => {
+    if (confirm('Reset all milestones and questions to defaults? This will overwrite your changes.')) {
+      setMilestones(defaultMilestones);
+      setQuestions(defaultQuestions);
+      localStorage.setItem(VERSION_KEY, String(DATA_VERSION));
+    }
+  };
+
+  // Question management
+  const updateQuestion = (id: string, updates: Partial<OpenQuestion>) => {
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
+  };
+
+  const deleteQuestion = (id: string) => {
+    if (confirm('Delete this question?')) {
+      setQuestions(prev => prev.filter(q => q.id !== id));
+    }
+  };
+
+  const addQuestion = (question: Omit<OpenQuestion, 'id'>) => {
+    const newQuestion: OpenQuestion = {
+      ...question,
+      id: 'q' + Date.now().toString(),
+    };
+    setQuestions(prev => [...prev, newQuestion]);
+    setShowAddQuestionForm(false);
+  };
+
+  const markAnswered = (id: string, answer: string) => {
+    updateQuestion(id, {
+      status: 'answered',
+      answer,
+      answeredDate: format(new Date(), 'yyyy-MM-dd'),
+    });
+  };
+
+  // Filter questions
+  const filteredQuestions = questions.filter(q => {
+    if (questionFilter === 'open') return q.status === 'open';
+    if (questionFilter === 'answered') return q.status === 'answered';
+    return true;
+  });
+
+  const openCount = questions.filter(q => q.status === 'open').length;
+  const answeredCount = questions.filter(q => q.status === 'answered').length;
+
+  // Calculate overall project health
+  const overallHealth = (): Health => {
+    const incomplete = milestones.filter(m => m.status !== 'complete');
+    if (incomplete.length === 0) return 'complete';
+
+    const healths = incomplete.map(calculateHealth);
+    if (healths.some(h => h === 'behind')) return 'behind';
+    if (healths.some(h => h === 'at_risk')) return 'at_risk';
+    return 'on_track';
+  };
+
+  // Progress stats
+  const completedCount = milestones.filter(m => m.status === 'complete').length;
+  const progressPercent = milestones.length > 0 ? Math.round((completedCount / milestones.length) * 100) : 0;
+
+  // Sort milestones by date (properly using date comparison)
+  const sortedMilestones = sortByDate(milestones);
+
+  // Find next upcoming milestone
+  const nextMilestone = sortedMilestones.find(m => {
+    if (m.status === 'complete') return false;
+    const targetDate = parseDate(m.date);
+    return !isPast(targetDate) || isToday(targetDate);
+  });
+
+  const projectHealth = overallHealth();
+  const projectHealthConfig = healthConfig[projectHealth];
+
+  // Don't render until loaded to avoid hydration issues
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-white p-8 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white p-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Target className="w-8 h-8 text-amber-400" />
+              <div>
+                <h1 className="text-2xl font-bold">Park at 14th</h1>
+                <p className="text-gray-400">Membership App Timeline</p>
+              </div>
+            </div>
+            <div className={`px-4 py-2 rounded-lg border ${projectHealthConfig.bg} ${projectHealthConfig.border}`}>
+              <span className={`font-medium ${projectHealthConfig.text}`}>
+                Project: {projectHealthConfig.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-gray-400">{completedCount} of {milestones.length} milestones complete</span>
+              <span className="text-white font-medium">{progressPercent}%</span>
+            </div>
+            <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all duration-500"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Key dates */}
+          <div className="flex gap-6 text-sm flex-wrap">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <span className="text-gray-400">Testing:</span>
+              <span className="text-white font-medium">Feb 15, 2026</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-500" />
+              <span className="text-gray-400">Launch:</span>
+              <span className="text-white font-medium">Mar 15, 2026</span>
+            </div>
+            {nextMilestone && (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-gray-400">Next:</span>
+                <span className="text-amber-400 font-medium">{nextMilestone.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Visual Timeline */}
+        <div className="mb-8 overflow-x-auto pb-4">
+          <div className="relative min-w-[800px]">
+            {/* Timeline line */}
+            <div className="absolute top-4 left-0 right-0 h-1 bg-gray-800 rounded-full" />
+
+            {/* Milestone dots */}
+            <div className="relative flex justify-between">
+              {sortedMilestones.map((milestone) => {
+                const health = calculateHealth(milestone);
+
+                return (
+                  <div key={milestone.id} className="flex flex-col items-center" style={{ flex: 1 }}>
+                    <div
+                      className={`w-4 h-4 rounded-full border-4 border-gray-950 z-10 cursor-pointer transition-transform hover:scale-125 ${
+                        milestone.status === 'complete' ? 'bg-green-500' :
+                        health === 'behind' ? 'bg-red-500' :
+                        health === 'at_risk' ? 'bg-amber-500' :
+                        'bg-gray-600'
+                      }`}
+                      onClick={() => setExpandedId(expandedId === milestone.id ? null : milestone.id)}
+                    />
+                    <div className="mt-2 text-center px-1">
+                      <div className="text-xs text-gray-500">
+                        {format(parseDate(milestone.date), 'MMM d')}
+                      </div>
+                      <div className="text-xs text-gray-400 max-w-[90px] leading-tight break-words">
+                        {milestone.name}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Milestones List */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Milestones</h2>
+            <div className="flex gap-2">
+              <button
+                onClick={resetToDefaults}
+                className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 rounded-lg flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add
+              </button>
+            </div>
+          </div>
+
+          {sortedMilestones.map((milestone) => {
+            const health = calculateHealth(milestone);
+            const healthCfg = healthConfig[health];
+            const statusCfg = statusConfig[milestone.status];
+            const StatusIcon = statusCfg.icon;
+            const isExpanded = expandedId === milestone.id;
+            const isEditing = editingId === milestone.id;
+
+            const targetDate = parseDate(milestone.date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const daysUntil = differenceInDays(targetDate, today);
+
+            return (
+              <div
+                key={milestone.id}
+                className={`rounded-lg border transition-all ${healthCfg.bg} ${healthCfg.border}`}
+              >
+                {/* Main row */}
+                <div
+                  className="flex items-center gap-4 p-4 cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : milestone.id)}
+                >
+                  <GripVertical className="w-4 h-4 text-gray-600 opacity-0 group-hover:opacity-100" />
+
+                  {/* Status icon */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const statuses: Milestone['status'][] = ['not_started', 'in_progress', 'complete', 'blocked'];
+                      const currentIdx = statuses.indexOf(milestone.status);
+                      const nextStatus = statuses[(currentIdx + 1) % statuses.length];
+                      updateMilestone(milestone.id, { status: nextStatus });
+                    }}
+                    className="p-1 rounded hover:bg-white/10 transition-colors"
+                    title="Click to change status"
+                  >
+                    <StatusIcon className={`w-5 h-5 ${statusCfg.color}`} />
+                  </button>
+
+                  {/* Name and date */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-white">{milestone.name}</div>
+                    <div className="text-sm text-gray-400">
+                      {format(targetDate, 'MMM d, yyyy')} • {milestone.owner}
+                    </div>
+                  </div>
+
+                  {/* Health badge */}
+                  <div className={`px-3 py-1 rounded-full text-xs font-medium ${healthCfg.bg} ${healthCfg.text} border ${healthCfg.border}`}>
+                    {milestone.status === 'complete' ? 'Done' :
+                     daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` :
+                     daysUntil === 0 ? 'Today' :
+                     `${daysUntil}d left`}
+                  </div>
+
+                  {/* Expand icon */}
+                  {isExpanded ? (
+                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                  )}
+                </div>
+
+                {/* Expanded content */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-gray-800/50">
+                    <div className="pt-4 space-y-3">
+                      {/* Notes */}
+                      {isEditing ? (
+                        <div className="space-y-3">
+                          <input
+                            type="text"
+                            value={milestone.name}
+                            onChange={(e) => updateMilestone(milestone.id, { name: e.target.value })}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                            placeholder="Milestone name"
+                          />
+                          <input
+                            type="date"
+                            value={milestone.date}
+                            onChange={(e) => updateMilestone(milestone.id, { date: e.target.value })}
+                            className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                          />
+                          <input
+                            type="text"
+                            value={milestone.owner}
+                            onChange={(e) => updateMilestone(milestone.id, { owner: e.target.value })}
+                            className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                            placeholder="Owner"
+                          />
+                          <textarea
+                            value={milestone.notes || ''}
+                            onChange={(e) => updateMilestone(milestone.id, { notes: e.target.value })}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white resize-none"
+                            rows={2}
+                            placeholder="Notes"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg"
+                            >
+                              Done
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {milestone.notes && (
+                            <p className="text-sm text-gray-400">{milestone.notes}</p>
+                          )}
+
+                          {/* Status selector */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">Status:</span>
+                            <div className="flex gap-1">
+                              {(['not_started', 'in_progress', 'complete', 'blocked'] as const).map((status) => {
+                                const cfg = statusConfig[status];
+                                const Icon = cfg.icon;
+                                return (
+                                  <button
+                                    key={status}
+                                    onClick={() => updateMilestone(milestone.id, { status })}
+                                    className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${
+                                      milestone.status === status
+                                        ? 'bg-gray-700 text-white'
+                                        : 'text-gray-500 hover:text-gray-300'
+                                    }`}
+                                  >
+                                    <Icon className={`w-3 h-3 ${cfg.color}`} />
+                                    {cfg.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={() => setEditingId(milestone.id)}
+                              className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deleteMilestone(milestone.id)}
+                              className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Add Form Modal */}
+        {showAddForm && (
+          <AddMilestoneForm
+            onAdd={addMilestone}
+            onClose={() => setShowAddForm(false)}
+          />
+        )}
+
+        {/* Open Questions Section */}
+        <div className="mt-12 space-y-3">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <MessageCircleQuestion className="w-6 h-6 text-purple-400" />
+              <div>
+                <h2 className="text-lg font-semibold">Open Questions</h2>
+                <p className="text-sm text-gray-500">
+                  {openCount} open · {answeredCount} answered
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {/* Filter buttons */}
+              <div className="flex gap-1 mr-2">
+                {(['all', 'open', 'answered'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setQuestionFilter(filter)}
+                    className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                      questionFilter === filter
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setShowAddQuestionForm(true)}
+                className="px-3 py-1.5 text-sm bg-purple-600 hover:bg-purple-500 rounded-lg flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add
+              </button>
+            </div>
+          </div>
+
+          {filteredQuestions.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No {questionFilter === 'all' ? '' : questionFilter} questions
+            </div>
+          ) : (
+            filteredQuestions.map((question) => (
+              <QuestionCard
+                key={question.id}
+                question={question}
+                isExpanded={expandedQuestionId === question.id}
+                onToggle={() => setExpandedQuestionId(expandedQuestionId === question.id ? null : question.id)}
+                onUpdate={(updates) => updateQuestion(question.id, updates)}
+                onDelete={() => deleteQuestion(question.id)}
+                onMarkAnswered={(answer) => markAnswered(question.id, answer)}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Add Question Form Modal */}
+        {showAddQuestionForm && (
+          <AddQuestionForm
+            onAdd={addQuestion}
+            onClose={() => setShowAddQuestionForm(false)}
+          />
+        )}
+
+        {/* Footer */}
+        <div className="mt-8 pt-4 border-t border-gray-800 text-center text-sm text-gray-500">
+          Last updated: {format(new Date(), 'MMM d, yyyy h:mm a')}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Add Milestone Form
+function AddMilestoneForm({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (milestone: Omit<Milestone, 'id'>) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const [owner, setOwner] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !date) return;
+    onAdd({
+      name,
+      date,
+      owner: owner || 'TBD',
+      status: 'not_started',
+      notes: notes || undefined,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 border-b border-gray-700">
+            <h2 className="text-lg font-semibold text-white">Add Milestone</h2>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Beta Launch"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Target Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Owner</label>
+              <input
+                type="text"
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                placeholder="e.g., RDG, NexArk, Stakeholders"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Notes</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="What needs to be done?"
+                rows={2}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-gray-700 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name || !date}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
+            >
+              Add Milestone
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Question Card Component
+function QuestionCard({
+  question,
+  isExpanded,
+  onToggle,
+  onUpdate,
+  onDelete,
+  onMarkAnswered,
+}: {
+  question: OpenQuestion;
+  isExpanded: boolean;
+  onToggle: () => void;
+  onUpdate: (updates: Partial<OpenQuestion>) => void;
+  onDelete: () => void;
+  onMarkAnswered: (answer: string) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [answerText, setAnswerText] = useState(question.answer || '');
+  const category = categoryConfig[question.category];
+
+  const statusColors = {
+    open: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
+    answered: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+    deferred: { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/30' },
+  };
+  const status = statusColors[question.status];
+
+  return (
+    <div className={`rounded-lg border transition-all ${status.bg} ${status.border}`}>
+      {/* Main row */}
+      <div
+        className="flex items-start gap-4 p-4 cursor-pointer"
+        onClick={onToggle}
+      >
+        {/* Status indicator */}
+        <div className="pt-1">
+          {question.status === 'answered' ? (
+            <CheckCircle2 className="w-5 h-5 text-green-400" />
+          ) : (
+            <Circle className="w-5 h-5 text-amber-400" />
+          )}
+        </div>
+
+        {/* Question content */}
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-white">{question.question}</div>
+          {question.context && (
+            <p className="text-sm text-gray-400 mt-1">{question.context}</p>
+          )}
+          {question.status === 'answered' && question.answer && !isExpanded && (
+            <p className="text-sm text-green-400 mt-2 truncate">
+              Answer: {question.answer}
+            </p>
+          )}
+        </div>
+
+        {/* Category badge */}
+        <span className={`px-2 py-1 rounded text-xs ${category.bg} ${category.color}`}>
+          {category.label}
+        </span>
+
+        {/* Expand icon */}
+        {isExpanded ? (
+          <ChevronUp className="w-5 h-5 text-gray-400" />
+        ) : (
+          <ChevronDown className="w-5 h-5 text-gray-400" />
+        )}
+      </div>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div className="px-4 pb-4 border-t border-gray-800/50">
+          <div className="pt-4 space-y-3">
+            {question.status === 'answered' && question.answer && (
+              <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
+                <div className="flex items-center gap-2 text-xs text-green-400 mb-1">
+                  <Check className="w-3 h-3" />
+                  Answered {question.answeredDate && `on ${question.answeredDate}`}
+                </div>
+                <p className="text-sm text-white">{question.answer}</p>
+              </div>
+            )}
+
+            {isAnswering ? (
+              <div className="space-y-3">
+                <textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white resize-none"
+                  rows={3}
+                  placeholder="Enter the answer/decision..."
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      if (answerText.trim()) {
+                        onMarkAnswered(answerText.trim());
+                        setIsAnswering(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 rounded-lg flex items-center gap-1"
+                  >
+                    <Check className="w-3 h-3" />
+                    Save Answer
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAnswering(false);
+                      setAnswerText(question.answer || '');
+                    }}
+                    className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : isEditing ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={question.question}
+                  onChange={(e) => onUpdate({ question: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                  placeholder="Question"
+                />
+                <textarea
+                  value={question.context || ''}
+                  onChange={(e) => onUpdate({ context: e.target.value })}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white resize-none"
+                  rows={2}
+                  placeholder="Context (optional)"
+                />
+                <select
+                  value={question.category}
+                  onChange={(e) => onUpdate({ category: e.target.value as OpenQuestion['category'] })}
+                  className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+                >
+                  <option value="product">Product</option>
+                  <option value="technical">Technical</option>
+                  <option value="business">Business</option>
+                  <option value="other">Other</option>
+                </select>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {question.status === 'open' && (
+                  <button
+                    onClick={() => setIsAnswering(true)}
+                    className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 rounded-lg flex items-center gap-1"
+                  >
+                    <Check className="w-3 h-3" />
+                    Answer This
+                  </button>
+                )}
+                {question.status === 'answered' && (
+                  <button
+                    onClick={() => {
+                      setAnswerText(question.answer || '');
+                      setIsAnswering(true);
+                    }}
+                    className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+                  >
+                    Edit Answer
+                  </button>
+                )}
+                {question.status === 'open' && (
+                  <button
+                    onClick={() => onUpdate({ status: 'deferred' })}
+                    className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+                  >
+                    Defer
+                  </button>
+                )}
+                {question.status === 'answered' && (
+                  <button
+                    onClick={() => onUpdate({ status: 'open', answer: undefined, answeredDate: undefined })}
+                    className="px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300"
+                  >
+                    Reopen
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-3 py-1.5 text-sm text-gray-400 hover:text-white"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={onDelete}
+                  className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Add Question Form
+function AddQuestionForm({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (question: Omit<OpenQuestion, 'id'>) => void;
+  onClose: () => void;
+}) {
+  const [questionText, setQuestionText] = useState('');
+  const [context, setContext] = useState('');
+  const [category, setCategory] = useState<OpenQuestion['category']>('product');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!questionText) return;
+    onAdd({
+      question: questionText,
+      context: context || undefined,
+      status: 'open',
+      category,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 border-b border-gray-700">
+            <h2 className="text-lg font-semibold text-white">Add Question</h2>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Question *</label>
+              <input
+                type="text"
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
+                placeholder="What needs to be decided?"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Context</label>
+              <textarea
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="Additional context or options to consider..."
+                rows={2}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as OpenQuestion['category'])}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white"
+              >
+                <option value="product">Product</option>
+                <option value="technical">Technical</option>
+                <option value="business">Business</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="p-6 border-t border-gray-700 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!questionText}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg transition-colors"
+            >
+              Add Question
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

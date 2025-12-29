@@ -1,39 +1,35 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, BarChart3, LayoutGrid, MapPin, Target } from 'lucide-react';
+import { Calendar, LayoutGrid, Target } from 'lucide-react';
 import { ViewModeSwitcher } from '@/components/ui/view-mode-switcher';
-import { MilestoneGanttR19 } from '@/components/milestone-gantt-r19';
 import { MilestoneBoard } from '@/components/milestone-board';
-import { MilestoneTimeline } from '@/components/milestone-timeline';
 import { GoalsTimeline } from '@/components/goals-timeline';
-import { Milestone, UserStory } from '@/lib/supabase';
+import { Milestone, UserStory, Feature } from '@/lib/supabase';
 
-type ScheduleView = 'goals' | 'timeline' | 'board' | 'roadmap';
+type ScheduleView = 'goals' | 'board';
 
 interface ScheduleTabProps {
     projectId: string;
     milestones: Milestone[];
     userStories: UserStory[];
+    features: Feature[];
     onRefresh: () => void;
     onUserStoryCreated: (userStory: UserStory) => void;
-    onUserStoryClick?: (userStory: UserStory) => void;
 }
 
 const viewOptions = [
     { key: 'goals' as const, label: 'Goals', icon: Target },
-    { key: 'timeline' as const, label: 'Timeline', icon: BarChart3 },
     { key: 'board' as const, label: 'Board', icon: LayoutGrid },
-    { key: 'roadmap' as const, label: 'Roadmap', icon: MapPin },
 ];
 
 export function ScheduleTab({
     projectId,
     milestones,
     userStories,
+    features,
     onRefresh,
     onUserStoryCreated,
-    onUserStoryClick,
 }: ScheduleTabProps) {
     const [view, setView] = useState<ScheduleView>('goals');
 
@@ -60,30 +56,14 @@ export function ScheduleTab({
                 />
             )}
 
-            {view === 'timeline' && (
-                <MilestoneGanttR19
-                    projectId={projectId}
-                    milestones={milestones}
-                    userStories={userStories}
-                    onRefresh={onRefresh}
-                />
-            )}
-
             {view === 'board' && (
                 <MilestoneBoard
                     projectId={projectId}
                     milestones={milestones}
                     userStories={userStories}
+                    features={features}
                     onRefresh={onRefresh}
                     onUserStoryCreated={onUserStoryCreated}
-                />
-            )}
-
-            {view === 'roadmap' && (
-                <MilestoneTimeline
-                    milestones={milestones}
-                    userStories={userStories}
-                    onStoryClick={onUserStoryClick}
                 />
             )}
         </div>

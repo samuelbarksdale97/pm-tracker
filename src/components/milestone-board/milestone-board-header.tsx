@@ -8,9 +8,10 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Plus, CheckSquare, RotateCcw } from 'lucide-react';
+import { Plus, CheckSquare, RotateCcw, Layers, FileText } from 'lucide-react';
 import { CreateStoryDialog } from '../create-story-dialog';
-import { MilestoneBoardHeaderProps } from './types';
+import { MilestoneBoardHeaderProps, MilestoneBoardMode } from './types';
+import { cn } from '@/lib/utils';
 
 export function MilestoneBoardHeader({
     bulkMode,
@@ -24,17 +25,49 @@ export function MilestoneBoardHeader({
     onRefresh,
     onUserStoryCreated,
     onOpenCreateDialog,
+    mode,
+    onModeChange,
 }: MilestoneBoardHeaderProps) {
     return (
         <div className="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h2 className="text-xl font-bold text-white">Milestone Board</h2>
-                <p className="text-gray-400 text-sm">
-                    {bulkMode
-                        ? `${selectedCount} stories selected`
-                        : 'Assign stories to milestones'
-                    }
-                </p>
+            <div className="flex items-center gap-4">
+                <div>
+                    <h2 className="text-xl font-bold text-white">Milestone Board</h2>
+                    <p className="text-gray-400 text-sm">
+                        {bulkMode
+                            ? `${selectedCount} ${mode === 'features' ? 'features' : 'stories'} selected`
+                            : `Assign ${mode === 'features' ? 'features' : 'stories'} to milestones`
+                        }
+                    </p>
+                </div>
+
+                {/* Mode Toggle */}
+                <div className="flex items-center bg-gray-800 rounded-lg p-1">
+                    <button
+                        onClick={() => onModeChange('features')}
+                        className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                            mode === 'features'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-400 hover:text-white'
+                        )}
+                    >
+                        <Layers className="w-4 h-4" />
+                        Features
+                    </button>
+                    <button
+                        onClick={() => onModeChange('stories')}
+                        className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                            mode === 'stories'
+                                ? 'bg-blue-600 text-white'
+                                : 'text-gray-400 hover:text-white'
+                        )}
+                    >
+                        <FileText className="w-4 h-4" />
+                        Stories
+                    </button>
+                </div>
             </div>
             <div className="flex items-center gap-2">
                 {bulkMode ? (
@@ -72,13 +105,15 @@ export function MilestoneBoardHeader({
                             <CheckSquare className="w-4 h-4" />
                             Bulk Select
                         </Button>
-                        <CreateStoryDialog
-                            projectId={projectId}
-                            onUserStoryCreated={(userStory) => {
-                                onRefresh();
-                                onUserStoryCreated?.(userStory);
-                            }}
-                        />
+                        {mode === 'stories' && (
+                            <CreateStoryDialog
+                                projectId={projectId}
+                                onUserStoryCreated={(userStory) => {
+                                    onRefresh();
+                                    onUserStoryCreated?.(userStory);
+                                }}
+                            />
+                        )}
                         <Button className="gap-2" variant="outline" onClick={onOpenCreateDialog}>
                             <Plus className="w-4 h-4" />
                             New Milestone

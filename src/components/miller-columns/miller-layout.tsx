@@ -19,6 +19,7 @@ import {
     deleteEpic,
     deleteFeature,
     createFeature,
+    reorderEpics,
 } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,6 +49,7 @@ import {
     Trash2,
     AlertTriangle,
     Plus,
+    GripVertical,
 } from 'lucide-react';
 import {
     DropdownMenu,
@@ -123,20 +125,17 @@ export function MillerLayout({ projectId, teamMembers, onRefresh }: MillerLayout
                 const data = await getEpicsWithCounts(projectId);
                 setEpics(data);
 
-                // On initial load, determine which epic to select
+                // On initial load, always select the first epic in display_order
+                // This ensures the epic with lowest display_order is always selected by default
                 if (!initialLoadRef.current && data.length > 0) {
                     initialLoadRef.current = true;
 
-                    // Use URL epic if valid, otherwise default to first
-                    if (urlEpicId && data.some(e => e.id === urlEpicId)) {
-                        setSelectedEpicId(urlEpicId);
-                        prevEpicRef.current = urlEpicId;
-                    } else {
-                        const firstId = data[0].id;
-                        setSelectedEpicId(firstId);
-                        setUrlEpicId(firstId);
-                        prevEpicRef.current = firstId;
-                    }
+                    // Always default to first epic in display_order
+                    // Only set local state - don't update URL on initial load to avoid
+                    // race conditions with tab switching URL updates
+                    const firstId = data[0].id;
+                    setSelectedEpicId(firstId);
+                    prevEpicRef.current = firstId;
                 }
             } catch (err) {
                 console.error('Error loading epics:', err);
@@ -322,6 +321,12 @@ export function MillerLayout({ projectId, teamMembers, onRefresh }: MillerLayout
         onRefresh();
     }, [selectedEpicId, onRefresh]);
 
+    const handleEpicsReordered = useCallback((epicIds: string[]) => {
+        // Update local state to reflect new order
+        const newEpics = epicIds.map(id => epics.find(e => e.id === id)!).filter(Boolean);
+        setEpics(newEpics);
+    }, [epics]);
+
     const handleFeatureUpdated = useCallback((updatedFeature: Feature) => {
         setFeatures(prev => prev.map(f => f.id === updatedFeature.id ? { ...f, ...updatedFeature } : f));
         onRefresh();
@@ -377,12 +382,14 @@ export function MillerLayout({ projectId, teamMembers, onRefresh }: MillerLayout
         <div className="space-y-3">
             {/* Epic Tabs */}
             <EpicTabBar
+                projectId={projectId}
                 epics={epics}
                 selectedEpicId={selectedEpicId}
                 loading={loadingEpics}
                 onSelectEpic={handleSelectEpic}
                 onEpicUpdated={handleEpicUpdated}
                 onEpicDeleted={handleEpicDeleted}
+                onEpicsReordered={handleEpicsReordered}
             />
 
             {/* Three-column layout */}
@@ -392,12 +399,18 @@ export function MillerLayout({ projectId, teamMembers, onRefresh }: MillerLayout
                     <FeatureListColumn
                         projectId={projectId}
                         epicId={selectedEpicId}
+                        epics={epics}
                         features={features}
                         selectedFeatureId={selectedFeatureId}
                         loading={loadingFeatures}
                         onSelectFeature={handleSelectFeature}
                         onFeatureUpdated={handleFeatureUpdated}
                         onFeatureDeleted={handleFeatureDeleted}
+                        onFeatureMoved={() => {
+                            // When a feature moves to a different epic, reload the current epic's features
+                            if (selectedEpicId) loadFeaturesForEpic(selectedEpicId);
+                            onRefresh();
+                        }}
                         onFeatureCreated={() => {
                             if (selectedEpicId) loadFeaturesForEpic(selectedEpicId);
                             onRefresh();
@@ -635,21 +648,28 @@ function EditEpicDialog({
 // Edit Feature Dialog Component
 function EditFeatureDialog({
     feature,
+    epics,
+    currentEpicId,
     open,
     onOpenChange,
     onSave,
+    onMoved,
     onDelete,
 }: {
     feature: Feature | null;
+    epics: Epic[];
+    currentEpicId: string | null;
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSave: (updatedFeature: Feature) => void;
+    onMoved: () => void;
     onDelete: (featureId: string) => void;
 }) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState<Feature['priority']>('P1');
     const [status, setStatus] = useState<Feature['status']>('Not Started');
+    const [selectedEpicId, setSelectedEpicId] = useState<string>('');
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -660,6 +680,7 @@ function EditFeatureDialog({
             setDescription(feature.description || '');
             setPriority(feature.priority);
             setStatus(feature.status);
+            setSelectedEpicId(feature.epic_id);
         }
         setShowDeleteConfirm(false);
     }, [feature]);
@@ -668,13 +689,21 @@ function EditFeatureDialog({
         if (!feature) return;
         setSaving(true);
         try {
+            const epicChanged = selectedEpicId !== feature.epic_id;
             const updated = await updateFeature(feature.id, {
                 name,
                 description,
                 priority,
                 status,
+                epic_id: selectedEpicId,
             });
-            onSave(updated);
+
+            if (epicChanged) {
+                // Feature was moved to a different epic
+                onMoved();
+            } else {
+                onSave(updated);
+            }
             onOpenChange(false);
         } catch (err) {
             console.error('Error updating feature:', err);
@@ -760,6 +789,38 @@ function EditFeatureDialog({
                         </div>
                     </div>
 
+                    {/* Move to Epic Section */}
+                    {epics.length > 1 && (
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                                <Layers className="w-4 h-4 text-purple-400" />
+                                Move to Epic
+                            </label>
+                            <Select value={selectedEpicId} onValueChange={setSelectedEpicId}>
+                                <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                                    <SelectValue placeholder="Select epic..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-900 border-gray-700">
+                                    {epics.map((epic) => (
+                                        <SelectItem key={epic.id} value={epic.id} className="text-white">
+                                            <div className="flex items-center gap-2">
+                                                <span>{epic.name}</span>
+                                                {epic.id === currentEpicId && (
+                                                    <span className="text-xs text-gray-400">(current)</span>
+                                                )}
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {selectedEpicId && selectedEpicId !== feature?.epic_id && (
+                                <p className="text-xs text-amber-400">
+                                    Feature will be moved to a different epic
+                                </p>
+                            )}
+                        </div>
+                    )}
+
                     {/* Delete Section */}
                     <div className="pt-4 border-t border-gray-700">
                         {!showDeleteConfirm ? (
@@ -844,21 +905,72 @@ function EditFeatureDialog({
 
 // Epic Tab Bar Component
 function EpicTabBar({
+    projectId,
     epics,
     selectedEpicId,
     loading,
     onSelectEpic,
     onEpicUpdated,
     onEpicDeleted,
+    onEpicsReordered,
 }: {
+    projectId: string;
     epics: Epic[];
     selectedEpicId: string | null;
     loading: boolean;
     onSelectEpic: (epicId: string) => void;
     onEpicUpdated: (epic: Epic) => void;
     onEpicDeleted: (epicId: string) => void;
+    onEpicsReordered: (epicIds: string[]) => void;
 }) {
     const [editingEpic, setEditingEpic] = useState<Epic | null>(null);
+    const [draggedEpicId, setDraggedEpicId] = useState<string | null>(null);
+    const [dragOverEpicId, setDragOverEpicId] = useState<string | null>(null);
+
+    const handleDragStart = (epicId: string) => {
+        setDraggedEpicId(epicId);
+    };
+
+    const handleDragEnd = async () => {
+        if (draggedEpicId && dragOverEpicId && draggedEpicId !== dragOverEpicId) {
+            // Calculate new order
+            const newEpics = [...epics];
+            const draggedIndex = newEpics.findIndex(e => e.id === draggedEpicId);
+            const targetIndex = newEpics.findIndex(e => e.id === dragOverEpicId);
+
+            if (draggedIndex !== -1 && targetIndex !== -1) {
+                // Remove dragged item and insert at target position
+                const [draggedEpic] = newEpics.splice(draggedIndex, 1);
+                newEpics.splice(targetIndex, 0, draggedEpic);
+
+                // Get new order of epic IDs
+                const newEpicIds = newEpics.map(e => e.id);
+
+                // Save to database
+                try {
+                    await reorderEpics(projectId, newEpicIds);
+                    onEpicsReordered(newEpicIds);
+                } catch (err) {
+                    console.error('Failed to reorder epics:', err);
+                }
+            }
+        }
+
+        setDraggedEpicId(null);
+        setDragOverEpicId(null);
+    };
+
+    const handleDragOver = (e: React.DragEvent, epicId: string) => {
+        e.preventDefault();
+        if (epicId !== draggedEpicId) {
+            setDragOverEpicId(epicId);
+        }
+    };
+
+    const handleDragLeave = () => {
+        setDragOverEpicId(null);
+    };
+
     if (loading) {
         return (
             <div className="flex items-center gap-2 p-2 bg-gray-900/50 rounded-lg border border-gray-800">
@@ -886,6 +998,8 @@ function EpicTabBar({
                 </div>
                 {epics.map(epic => {
                     const isSelected = selectedEpicId === epic.id;
+                    const isDragging = draggedEpicId === epic.id;
+                    const isDragOver = dragOverEpicId === epic.id;
                     const progress = epic.user_story_count && epic.user_story_count > 0
                         ? Math.round(((epic.completed_story_count || 0) / epic.user_story_count) * 100)
                         : 0;
@@ -895,6 +1009,11 @@ function EpicTabBar({
                             key={epic.id}
                             role="button"
                             tabIndex={0}
+                            draggable
+                            onDragStart={() => handleDragStart(epic.id)}
+                            onDragEnd={handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, epic.id)}
+                            onDragLeave={handleDragLeave}
                             onClick={() => onSelectEpic(epic.id)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
@@ -903,12 +1022,18 @@ function EpicTabBar({
                                 }
                             }}
                             className={cn(
-                                "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap cursor-pointer",
+                                "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap cursor-pointer group",
                                 isSelected
                                     ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
-                                    : "text-gray-400 hover:text-white hover:bg-gray-800"
+                                    : "text-gray-400 hover:text-white hover:bg-gray-800",
+                                isDragging && "opacity-50",
+                                isDragOver && "border-l-2 border-purple-500"
                             )}
                         >
+                            {/* Drag Handle */}
+                            <div className="cursor-grab active:cursor-grabbing text-gray-600 hover:text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <GripVertical className="w-3 h-3" />
+                            </div>
                             <span>{epic.name}</span>
                             <div className="flex items-center gap-1">
                                 <span className={cn(
@@ -975,22 +1100,26 @@ function EpicTabBar({
 function FeatureListColumn({
     projectId,
     epicId,
+    epics,
     features,
     selectedFeatureId,
     loading,
     onSelectFeature,
     onFeatureUpdated,
     onFeatureDeleted,
+    onFeatureMoved,
     onFeatureCreated,
 }: {
     projectId: string;
     epicId: string | null;
+    epics: Epic[];
     features: Feature[];
     selectedFeatureId: string | null;
     loading: boolean;
     onSelectFeature: (featureId: string | null) => void;
     onFeatureUpdated: (feature: Feature) => void;
     onFeatureDeleted: (featureId: string) => void;
+    onFeatureMoved: () => void;
     onFeatureCreated: () => void;
 }) {
     const [editingFeature, setEditingFeature] = useState<Feature | null>(null);
@@ -1170,11 +1299,14 @@ function FeatureListColumn({
             {/* Edit Feature Dialog */}
             <EditFeatureDialog
                 feature={editingFeature}
+                epics={epics}
+                currentEpicId={epicId}
                 open={editingFeature !== null}
                 onOpenChange={(open) => {
                     if (!open) setEditingFeature(null);
                 }}
                 onSave={onFeatureUpdated}
+                onMoved={onFeatureMoved}
                 onDelete={onFeatureDeleted}
             />
 
