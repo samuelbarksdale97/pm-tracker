@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { format, differenceInDays, isPast, isToday, compareAsc } from 'date-fns';
+import { milestonesApi, questionsApi } from '@/lib/park-timeline-api';
 import {
   CheckCircle2,
   Circle,
@@ -88,9 +89,6 @@ const statusConfig: Record<Milestone['status'], { icon: typeof Circle; color: st
   blocked: { icon: AlertTriangle, color: 'text-red-400', label: 'Blocked' },
 };
 
-// Version for cache busting when defaults change
-const DATA_VERSION = 6;
-
 // Question categories config
 const categoryConfig: Record<OpenQuestion['category'], { label: string; color: string; bg: string }> = {
   product: { label: 'Product', color: 'text-purple-400', bg: 'bg-purple-500/10' },
@@ -100,129 +98,193 @@ const categoryConfig: Record<OpenQuestion['category'], { label: string; color: s
 };
 
 // Default open questions from meeting notes
+// Updated with answers from Dec 29 kickoff meeting with Julian
 const defaultQuestions: OpenQuestion[] = [
   {
     id: 'q1',
     question: 'Do we want to allow members to choose the table they book?',
     context: 'Does this differ between Brunch/Dinner/Bottle Service?',
-    status: 'open',
+    status: 'answered',
+    answer: 'NO - Members cannot choose specific tables. Park staff assigns tables.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q2',
     question: 'What are the finalized membership tier names, prices, and perks?',
     context: 'Need tier definitions to build the membership purchase flow and pricing UI.',
-    status: 'open',
+    status: 'answered',
+    answer: 'V1: ONE TIER ONLY - Basic ($100/month). Perks: 3 complimentary drinks, $35 brunch, no line. Add-ons available (e.g. $25/mo for coffee). Higher tiers will unlock partner restaurants in future.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q3',
     question: 'Can members purchase/upgrade to a higher tier mid-cycle?',
-    status: 'open',
+    status: 'answered',
+    answer: 'Upgrades require CALLING IN (not self-service in app). Concierge handles tier changes.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q4',
     question: 'Are guests allowed to download and use the app?',
     context: 'Or is it members-only? Affects onboarding flow design.',
-    status: 'open',
+    status: 'answered',
+    answer: 'MEMBERS ONLY. Guests cannot use the app. No "Create Account" flow - sign in only. Membership application happens EXTERNALLY (website/form). App may have "Interested in joining?" link to external form.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q5',
     question: 'How do guest invite codes work?',
     context: 'QR code vs shareable link vs manual code entry?',
-    status: 'open',
+    status: 'answered',
+    answer: 'Member enters guest PHONE NUMBER in app → SMS sent automatically → Guest clicks link → fills out their info (name, number, DOB) → confirms attendance. Phone number is primary key for tracking repeat guests.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q6',
     question: 'How many guests can a member bring per visit?',
-    status: 'open',
+    status: 'answered',
+    answer: '3 guests for regular bookings (brunch, dinner, events). 8 guests for BOTTLE SERVICE. More than 3 requires calling concierge.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q7',
     question: 'What amenities should be listed in the Membership & Rewards section?',
     context: 'e.g., valet, coat check, reserved parking, complimentary drinks, etc.',
-    status: 'open',
+    status: 'answered',
+    answer: 'Basic tier: 3 complimentary drinks, $35 brunch, no line/priority entry, work days access (TBD when opening). Higher tiers will add partner restaurant perks.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q8',
     question: 'What member profile fields should be editable?',
     context: 'Name, birthday, email, phone, photo?',
-    status: 'open',
+    status: 'answered',
+    answer: 'PHOTO ONLY is self-editable. Name, birthday, phone, email all require CALLING IN to change (prevents fraud).',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q9',
     question: 'How does the in-venue Payment Tab work?',
     context: 'Is it scanned at bar? Tracking free drinks or actual purchases? (Phase 2 feature)',
-    status: 'open',
+    status: 'answered',
+    answer: 'Simplified: Show receipts/history only. Free drinks tracked via membership ID (server enters it). Tips for free drinks are REQUIRED ($3/$5/$7). Dinner/brunch = service charge on bill. Bar/party tip flow still TBD.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q10',
     question: 'Apple Developer Account - has Marc purchased it?',
-    context: '$99 required for iOS App Store. Blocker for app submission.',
+    context: '$99/year required for iOS App Store. Also need Android ($25 one-time).',
     status: 'open',
     category: 'business'
   },
   {
     id: 'q11',
     question: 'OpenTable Integration - how do we handle table reservations?',
-    context: 'OpenTable has NO public API. Options: (1) Deep link to OpenTable for reservations, (2) Create separate member-only table inventory outside OpenTable, (3) Manual sync where staff updates both systems. This is a MAJOR BLOCKER for the reservation feature.',
+    context: 'OpenTable has NO public API. Park does 800-1200 tables/weekend with them. Julian talking to Renee about options.',
     status: 'open',
     category: 'technical'
   },
   {
     id: 'q12',
     question: 'Does bottle service go through OpenTable or is it separate?',
-    context: 'Bottle service reservations may already be managed outside OpenTable. Need to confirm current workflow.',
-    status: 'open',
+    context: 'Bottle service reservations may already be managed outside OpenTable.',
+    status: 'answered',
+    answer: 'SEPARATE - Bottle service does NOT go through OpenTable. Park manages it directly. Prepaid through app, up to 8 guests.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
   {
     id: 'q13',
     question: 'Real-time table availability - how do we prevent double bookings?',
-    context: 'If we manage member reservations separately from OpenTable, we need a strategy to prevent conflicts. Options: dedicated member tables, time-based holds, staff coordination.',
+    context: 'If we manage member reservations separately from OpenTable, we need a strategy.',
     status: 'open',
     category: 'technical'
   },
   {
     id: 'q14',
-    question: 'QR Code Scanner - what should we use for member check-in?',
-    context: 'Options: (1) Use built-in phone camera (iOS 11+/modern Android) - simplest, no extra app needed. (2) Dedicated scanner app for staff - EventSmart, Sched Count, etc. (3) Build custom scanner into admin portal. Need to decide: Who scans? Staff at door or self-check-in? What data gets captured?',
-    status: 'open',
+    question: 'Member check-in method at door?',
+    context: 'Originally assumed QR codes.',
+    status: 'answered',
+    answer: 'NFC TAP (like Soho House), NOT QR codes. Apple Wallet pass with NFC. Member photo shows on staff iPad when tapped. More secure - cannot screenshot/share.',
+    answeredDate: '2024-12-29',
     category: 'technical'
   },
   {
     id: 'q15',
     question: 'Age verification - what method should we implement?',
-    context: 'Options: (1) ID scan services (Jumio, Onfido, Veriff) - expensive but thorough. (2) Manual verification by staff on first visit. (3) Date of birth entry with terms acceptance. This is a compliance requirement for the 21+ venue.',
-    status: 'open',
+    context: 'Compliance requirement for 21+ venue.',
+    status: 'answered',
+    answer: 'Age verification happens ONCE at membership signup (external form with ID upload). NO in-app verification. Members are already 21+ by virtue of being approved. Guests get ID checked at door.',
+    answeredDate: '2024-12-29',
     category: 'technical'
   },
   {
     id: 'q16',
     question: 'Who manages the admin portal?',
-    context: 'Staff will need to: create/edit events, manage reservations, view member lists, update membership tiers, send push notifications. Do all staff get access, or just managers?',
+    context: 'Staff will need to: create/edit events, manage reservations, view member lists.',
     status: 'open',
     category: 'business'
   },
   {
     id: 'q17',
     question: 'Push notification strategy - what triggers notifications?',
-    context: 'Potential triggers: new events posted, reservation reminders, membership renewal, special offers. Need to decide frequency and opt-in vs opt-out.',
+    context: 'Potential triggers: new events, reservation reminders, membership renewal.',
     status: 'open',
     category: 'product'
   },
   {
     id: 'q18',
     question: 'Event creation workflow - who creates events and how?',
-    context: 'Are events created by Park staff in admin portal? Synced from another calendar? How far in advance? What info is required (capacity, price, dress code)?',
+    context: 'Are events created by Park staff in admin portal?',
     status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q19',
+    question: 'What payment platform does Park currently use?',
+    context: 'Need to integrate with existing system or decide on Stripe. Affects membership billing and in-venue payments.',
+    status: 'open',
+    category: 'technical'
+  },
+  {
+    id: 'q20',
+    question: 'What is the no-show penalty fee amount?',
+    context: 'Members who RSVP but dont show up get charged. After 3-5 no-shows, fee is charged to card. Amount TBD.',
+    status: 'open',
+    category: 'business'
+  },
+  {
+    id: 'q21',
+    question: 'RSVP cancellation and waitlist policy?',
+    context: 'Up to 5 cancellations allowed within 48hrs of event. Waitlist auto-promotes when spots open. Need exact rules.',
+    status: 'open',
+    category: 'product'
+  },
+  {
+    id: 'q22',
+    question: 'All events are FREE for members - confirmed?',
+    context: 'Julian confirmed no paid events in app. Members always allowed in. Still need RSVP for capacity tracking.',
+    status: 'answered',
+    answer: 'YES - All events are FREE for members. No ticket purchases. Members just RSVP (for capacity). If RSVP is full, waitlist.',
+    answeredDate: '2024-12-29',
+    category: 'product'
+  },
+  {
+    id: 'q23',
+    question: 'Who controls "Who\'s Going" visibility on events?',
+    context: 'Originally thought members could toggle their visibility.',
+    status: 'answered',
+    answer: 'ADMIN controls visibility per event (not member toggle). If admin enables it, members who RSVPd can see other attendees.',
+    answeredDate: '2024-12-29',
     category: 'product'
   },
 ];
@@ -481,11 +543,6 @@ SUCCESS METRICS:
   },
 ];
 
-// LocalStorage keys
-const STORAGE_KEY = 'park14th_milestones';
-const QUESTIONS_KEY = 'park14th_questions';
-const VERSION_KEY = 'park14th_data_version';
-
 export default function TimelinePage() {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [questions, setQuestions] = useState<OpenQuestion[]>([]);
@@ -497,97 +554,135 @@ export default function TimelinePage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [questionFilter, setQuestionFilter] = useState<'all' | 'open' | 'answered'>('all');
 
-  // Load from localStorage on mount, with version check
+  // Load from database on mount
   useEffect(() => {
-    const savedVersion = localStorage.getItem(VERSION_KEY);
-    const savedMilestones = localStorage.getItem(STORAGE_KEY);
-    const savedQuestions = localStorage.getItem(QUESTIONS_KEY);
-
-    // If version mismatch or no data, use defaults
-    if (savedVersion !== String(DATA_VERSION) || !savedMilestones) {
-      setMilestones(defaultMilestones);
-      setQuestions(defaultQuestions);
-      localStorage.setItem(VERSION_KEY, String(DATA_VERSION));
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultMilestones));
-      localStorage.setItem(QUESTIONS_KEY, JSON.stringify(defaultQuestions));
-    } else {
+    async function loadData() {
       try {
-        setMilestones(JSON.parse(savedMilestones));
-        setQuestions(savedQuestions ? JSON.parse(savedQuestions) : defaultQuestions);
-      } catch {
+        const [milestonesData, questionsData] = await Promise.all([
+          milestonesApi.getAll(),
+          questionsApi.getAll()
+        ]);
+
+        // If no data in DB, seed with defaults
+        if (milestonesData.length === 0) {
+          for (const milestone of defaultMilestones) {
+            await milestonesApi.create(milestone);
+          }
+          setMilestones(defaultMilestones);
+        } else {
+          setMilestones(milestonesData);
+        }
+
+        if (questionsData.length === 0) {
+          for (const question of defaultQuestions) {
+            await questionsApi.create(question);
+          }
+          setQuestions(defaultQuestions);
+        } else {
+          setQuestions(questionsData);
+        }
+      } catch (error) {
+        console.error('Failed to load timeline data:', error);
+        // Fallback to defaults on error
         setMilestones(defaultMilestones);
         setQuestions(defaultQuestions);
+      } finally {
+        setIsLoaded(true);
       }
     }
-    setIsLoaded(true);
+    loadData();
   }, []);
 
-  // Save to localStorage on change (only after initial load)
-  useEffect(() => {
-    if (isLoaded && milestones.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(milestones));
-    }
-  }, [milestones, isLoaded]);
-
-  useEffect(() => {
-    if (isLoaded && questions.length > 0) {
-      localStorage.setItem(QUESTIONS_KEY, JSON.stringify(questions));
-    }
-  }, [questions, isLoaded]);
-
   // Update milestone
-  const updateMilestone = (id: string, updates: Partial<Milestone>) => {
-    setMilestones(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+  const updateMilestone = async (id: string, updates: Partial<Milestone>) => {
+    try {
+      await milestonesApi.update(id, updates);
+      setMilestones(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m));
+    } catch (error) {
+      console.error('Failed to update milestone:', error);
+    }
   };
 
   // Delete milestone
-  const deleteMilestone = (id: string) => {
+  const deleteMilestone = async (id: string) => {
     if (confirm('Delete this milestone?')) {
-      setMilestones(prev => prev.filter(m => m.id !== id));
+      try {
+        await milestonesApi.delete(id);
+        setMilestones(prev => prev.filter(m => m.id !== id));
+      } catch (error) {
+        console.error('Failed to delete milestone:', error);
+      }
     }
   };
 
   // Add milestone
-  const addMilestone = (milestone: Omit<Milestone, 'id'>) => {
-    const newMilestone: Milestone = {
-      ...milestone,
-      id: Date.now().toString(),
-    };
-    setMilestones(prev => sortByDate([...prev, newMilestone]));
-    setShowAddForm(false);
+  const addMilestone = async (milestone: Omit<Milestone, 'id'>) => {
+    try {
+      const newMilestone = await milestonesApi.create(milestone);
+      setMilestones(prev => sortByDate([...prev, newMilestone]));
+      setShowAddForm(false);
+    } catch (error) {
+      console.error('Failed to add milestone:', error);
+    }
   };
 
   // Reset to defaults
-  const resetToDefaults = () => {
+  const resetToDefaults = async () => {
     if (confirm('Reset all milestones and questions to defaults? This will overwrite your changes.')) {
-      setMilestones(defaultMilestones);
-      setQuestions(defaultQuestions);
-      localStorage.setItem(VERSION_KEY, String(DATA_VERSION));
+      try {
+        // Delete all existing milestones and questions
+        await Promise.all([
+          ...milestones.map(m => milestonesApi.delete(m.id)),
+          ...questions.map(q => questionsApi.delete(q.id))
+        ]);
+
+        // Re-seed with defaults
+        await Promise.all([
+          ...defaultMilestones.map(m => milestonesApi.create(m)),
+          ...defaultQuestions.map(q => questionsApi.create(q))
+        ]);
+
+        setMilestones(defaultMilestones);
+        setQuestions(defaultQuestions);
+      } catch (error) {
+        console.error('Failed to reset to defaults:', error);
+      }
     }
   };
 
   // Question management
-  const updateQuestion = (id: string, updates: Partial<OpenQuestion>) => {
-    setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
-  };
-
-  const deleteQuestion = (id: string) => {
-    if (confirm('Delete this question?')) {
-      setQuestions(prev => prev.filter(q => q.id !== id));
+  const updateQuestion = async (id: string, updates: Partial<OpenQuestion>) => {
+    try {
+      await questionsApi.update(id, updates);
+      setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
+    } catch (error) {
+      console.error('Failed to update question:', error);
     }
   };
 
-  const addQuestion = (question: Omit<OpenQuestion, 'id'>) => {
-    const newQuestion: OpenQuestion = {
-      ...question,
-      id: 'q' + Date.now().toString(),
-    };
-    setQuestions(prev => [...prev, newQuestion]);
-    setShowAddQuestionForm(false);
+  const deleteQuestion = async (id: string) => {
+    if (confirm('Delete this question?')) {
+      try {
+        await questionsApi.delete(id);
+        setQuestions(prev => prev.filter(q => q.id !== id));
+      } catch (error) {
+        console.error('Failed to delete question:', error);
+      }
+    }
   };
 
-  const markAnswered = (id: string, answer: string) => {
-    updateQuestion(id, {
+  const addQuestion = async (question: Omit<OpenQuestion, 'id'>) => {
+    try {
+      const newQuestion = await questionsApi.create(question);
+      setQuestions(prev => [...prev, newQuestion]);
+      setShowAddQuestionForm(false);
+    } catch (error) {
+      console.error('Failed to add question:', error);
+    }
+  };
+
+  const markAnswered = async (id: string, answer: string) => {
+    await updateQuestion(id, {
       status: 'answered',
       answer,
       answeredDate: format(new Date(), 'yyyy-MM-dd'),

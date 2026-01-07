@@ -10,7 +10,11 @@ afterEach(() => {
 // Mock scrollIntoView (not available in jsdom)
 Element.prototype.scrollIntoView = vi.fn();
 
-// Mock fetch for API tests
+// Save original fetch for integration tests
+// @ts-ignore
+global.originalFetch = global.fetch;
+
+// Mock fetch for unit tests (integration tests will restore originalFetch)
 global.fetch = vi.fn();
 
 // Mock Next.js router
