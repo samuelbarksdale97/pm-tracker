@@ -36,7 +36,7 @@ interface OpenQuestion {
   context?: string;
   status: 'open' | 'answered' | 'deferred';
   answer?: string;
-  answeredDate?: string;
+  answered_date?: string;
   category: 'product' | 'technical' | 'business' | 'other';
 }
 
@@ -106,7 +106,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Does this differ between Brunch/Dinner/Bottle Service?',
     status: 'answered',
     answer: 'NO - Members cannot choose specific tables. Park staff assigns tables.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -115,7 +115,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Need tier definitions to build the membership purchase flow and pricing UI.',
     status: 'answered',
     answer: 'V1: ONE TIER ONLY - Basic ($100/month). Perks: 3 complimentary drinks, $35 brunch, no line. Add-ons available (e.g. $25/mo for coffee). Higher tiers will unlock partner restaurants in future.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -123,7 +123,7 @@ const defaultQuestions: OpenQuestion[] = [
     question: 'Can members purchase/upgrade to a higher tier mid-cycle?',
     status: 'answered',
     answer: 'Upgrades require CALLING IN (not self-service in app). Concierge handles tier changes.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -132,7 +132,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Or is it members-only? Affects onboarding flow design.',
     status: 'answered',
     answer: 'MEMBERS ONLY. Guests cannot use the app. No "Create Account" flow - sign in only. Membership application happens EXTERNALLY (website/form). App may have "Interested in joining?" link to external form.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -141,7 +141,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'QR code vs shareable link vs manual code entry?',
     status: 'answered',
     answer: 'Member enters guest PHONE NUMBER in app → SMS sent automatically → Guest clicks link → fills out their info (name, number, DOB) → confirms attendance. Phone number is primary key for tracking repeat guests.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -149,7 +149,7 @@ const defaultQuestions: OpenQuestion[] = [
     question: 'How many guests can a member bring per visit?',
     status: 'answered',
     answer: '3 guests for regular bookings (brunch, dinner, events). 8 guests for BOTTLE SERVICE. More than 3 requires calling concierge.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -158,7 +158,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'e.g., valet, coat check, reserved parking, complimentary drinks, etc.',
     status: 'answered',
     answer: 'Basic tier: 3 complimentary drinks, $35 brunch, no line/priority entry, work days access (TBD when opening). Higher tiers will add partner restaurant perks.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -167,7 +167,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Name, birthday, email, phone, photo?',
     status: 'answered',
     answer: 'PHOTO ONLY is self-editable. Name, birthday, phone, email all require CALLING IN to change (prevents fraud).',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -176,7 +176,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Is it scanned at bar? Tracking free drinks or actual purchases? (Phase 2 feature)',
     status: 'answered',
     answer: 'Simplified: Show receipts/history only. Free drinks tracked via membership ID (server enters it). Tips for free drinks are REQUIRED ($3/$5/$7). Dinner/brunch = service charge on bill. Bar/party tip flow still TBD.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -199,7 +199,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Bottle service reservations may already be managed outside OpenTable.',
     status: 'answered',
     answer: 'SEPARATE - Bottle service does NOT go through OpenTable. Park manages it directly. Prepaid through app, up to 8 guests.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -215,7 +215,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Originally assumed QR codes.',
     status: 'answered',
     answer: 'NFC TAP (like Soho House), NOT QR codes. Apple Wallet pass with NFC. Member photo shows on staff iPad when tapped. More secure - cannot screenshot/share.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'technical'
   },
   {
@@ -224,7 +224,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Compliance requirement for 21+ venue.',
     status: 'answered',
     answer: 'Age verification happens ONCE at membership signup (external form with ID upload). NO in-app verification. Members are already 21+ by virtue of being approved. Guests get ID checked at door.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'technical'
   },
   {
@@ -275,7 +275,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Julian confirmed no paid events in app. Members always allowed in. Still need RSVP for capacity tracking.',
     status: 'answered',
     answer: 'YES - All events are FREE for members. No ticket purchases. Members just RSVP (for capacity). If RSVP is full, waitlist.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
   {
@@ -284,7 +284,7 @@ const defaultQuestions: OpenQuestion[] = [
     context: 'Originally thought members could toggle their visibility.',
     status: 'answered',
     answer: 'ADMIN controls visibility per event (not member toggle). If admin enables it, members who RSVPd can see other attendees.',
-    answeredDate: '2024-12-29',
+    answered_date: '2024-12-29',
     category: 'product'
   },
 ];
@@ -685,7 +685,7 @@ export default function TimelinePage() {
     await updateQuestion(id, {
       status: 'answered',
       answer,
-      answeredDate: format(new Date(), 'yyyy-MM-dd'),
+      answered_date: format(new Date(), 'yyyy-MM-dd'),
     });
   };
 
@@ -1276,7 +1276,7 @@ function QuestionCard({
               <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
                 <div className="flex items-center gap-2 text-xs text-green-400 mb-1">
                   <Check className="w-3 h-3" />
-                  Answered {question.answeredDate && `on ${question.answeredDate}`}
+                  Answered {question.answered_date && `on ${question.answered_date}`}
                 </div>
                 <p className="text-sm text-white">{question.answer}</p>
               </div>
@@ -1381,7 +1381,7 @@ function QuestionCard({
                 )}
                 {question.status === 'answered' && (
                   <button
-                    onClick={() => onUpdate({ status: 'open', answer: undefined, answeredDate: undefined })}
+                    onClick={() => onUpdate({ status: 'open', answer: undefined, answered_date: undefined })}
                     className="px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300"
                   >
                     Reopen
