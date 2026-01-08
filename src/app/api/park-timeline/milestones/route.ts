@@ -1,11 +1,10 @@
-import { createClient } from '@/lib/supabase/server';
+import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 // GET all milestones
 export async function GET() {
-  const supabase = createClient();
 
   const { data, error } = await supabase
     .from('park_milestones')
@@ -22,7 +21,6 @@ export async function GET() {
 
 // POST new milestone
 export async function POST(request: Request) {
-  const supabase = createClient();
   const body = await request.json();
 
   const { data, error } = await supabase
@@ -41,7 +39,6 @@ export async function POST(request: Request) {
 
 // PUT update milestone
 export async function PUT(request: Request) {
-  const supabase = createClient();
   const body = await request.json();
   const { id, ...updates } = body;
 
@@ -62,7 +59,6 @@ export async function PUT(request: Request) {
 
 // DELETE milestone
 export async function DELETE(request: Request) {
-  const supabase = createClient();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 

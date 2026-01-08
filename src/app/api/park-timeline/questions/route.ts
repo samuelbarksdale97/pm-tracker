@@ -1,12 +1,10 @@
-import { createClient } from '@/lib/supabase/server';
+import { supabase } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
 // GET all questions
 export async function GET() {
-  const supabase = createClient();
-
   const { data, error } = await supabase
     .from('park_questions')
     .select('*')
@@ -22,7 +20,6 @@ export async function GET() {
 
 // POST new question
 export async function POST(request: Request) {
-  const supabase = createClient();
   const body = await request.json();
 
   const { data, error} = await supabase
@@ -41,7 +38,6 @@ export async function POST(request: Request) {
 
 // PUT update question
 export async function PUT(request: Request) {
-  const supabase = createClient();
   const body = await request.json();
   const { id, ...updates } = body;
 
@@ -62,7 +58,6 @@ export async function PUT(request: Request) {
 
 // DELETE question
 export async function DELETE(request: Request) {
-  const supabase = createClient();
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
